@@ -1,6 +1,6 @@
 # Camathern — Catchment Data Explorer
 
-Environmental intelligence dashboard for West Wales catchment monitoring. Built for Carmarthenshire County Council and Aberystwyth University as part of the EMWAC programme.
+Environmental intelligence dashboard for West Wales catchment monitoring. Built for Carmarthenshire County Council and Aberystwyth University.
 
 ## Overview
 
@@ -51,13 +51,6 @@ node --test tests/*.mjs
 │   └── i18n.test.mjs
 └── package.json
 ```
-
-## Design System
-
-- **Typography** — Inter, weight/tracking hierarchy
-- **Palette** — Deep Navy primary, Teal (#0d9488) accent, Cool Gray (#f7f9fb) background
-- **Depth** — Glassmorphism sidebar/header with `backdrop-filter: blur(24px)`
-- **Layout** — 280px fixed sidebar + fluid content area, 4px spacing unit
 
 ## Data Architecture
 
