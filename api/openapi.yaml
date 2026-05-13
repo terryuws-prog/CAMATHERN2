@@ -1,0 +1,197 @@
+openapi: 3.1.0
+info:
+  title: Catchment Data Explorer API
+  version: 0.1.0
+  summary: API contract for future Kuner, university database, council dashboard integration.
+servers:
+  - url: https://example.carmarthenshire.gov.uk/catchment-data
+paths:
+  /api/v1/device-readings:
+    post:
+      summary: Receive readings from Kuner-managed devices.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceReadingBatch"
+      responses:
+        "202":
+          description: Accepted for university database ingestion.
+  /api/v1/site-registry:
+    get:
+      summary: Return council-managed site locations from SharePoint.
+      responses:
+        "200":
+          description: Site registry records.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SiteRegistryRecord"
+  /api/v1/qc/evaluate:
+    post:
+      summary: Evaluate incoming readings against tidal exposure and official thresholds.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceReading"
+      responses:
+        "200":
+          description: Quality-control result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QcResult"
+  /api/v1/standards:
+    get:
+      summary: Return SAC and Water Framework Directive threshold configuration.
+      responses:
+        "200":
+          description: Threshold metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  $ref: "#/components/schemas/Threshold"
+  /api/v1/dashboard-snapshot:
+    get:
+      summary: Return joined dashboard data for the council view.
+      responses:
+        "200":
+          description: Dashboard snapshot with locations joined from the registry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSnapshot"
+components:
+  schemas:
+    DeviceReadingBatch:
+      type: object
+      required: [source, readings]
+      properties:
+        source:
+          type: string
+          enum: [kuner]
+        readings:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeviceReading"
+    DeviceReading:
+      type: object
+      required: [deviceId, transmittedAt, tideState, sensorDepthM, samples]
+      properties:
+        deviceId:
+          type: string
+          pattern: "^KNR-[A-Z0-9-]+$"
+        transmittedAt:
+          type: string
+          format: date-time
+        battery:
+          type: number
+          minimum: 0
+          maximum: 100
+        tideState:
+          type: string
+          enum: [submerged, exposed, unknown]
+        sensorDepthM:
+          type: number
+          minimum: 0
+        samples:
+          type: object
+          required: [flow, dissolvedOxygen, conductivity, ph, temperature, nitrate, ammonium]
+          properties:
+            flow:
+              type: number
+            dissolvedOxygen:
+              type: number
+            conductivity:
+              type: number
+            ph:
+              type: number
+            temperature:
+              type: number
+            nitrate:
+              type: number
+            ammonium:
+              type: number
+            phosphateManual:
+              type: number
+      unevaluatedProperties: false
+    SiteRegistryRecord:
+      type: object
+      required: [id, deviceId, name, catchment, latitude, longitude, locationSource]
+      properties:
+        id:
+          type: string
+        deviceId:
+          type: string
+        name:
+          type: string
+        catchment:
+          type: string
+        latitude:
+          type: number
+        longitude:
+          type: number
+        accessRisk:
+          type: string
+          enum: [low, medium, high]
+        telemetry:
+          type: string
+          enum: [LoRaWAN, Satellite]
+        locationSource:
+          type: string
+          enum: [Council SharePoint registry]
+    QcResult:
+      type: object
+      required: [valid, colour, reason]
+      properties:
+        valid:
+          type: boolean
+        colour:
+          type: string
+          enum: [green, red]
+        reason:
+          type: string
+    Threshold:
+      type: object
+      required: [label, unit, min, max, framework]
+      properties:
+        label:
+          type: string
+        unit:
+          type: string
+        min:
+          type: number
+        max:
+          type: number
+        framework:
+          type: string
+          enum: [SAC / WFD, WFD, Manual sampling, Hydrometry]
+    DashboardSnapshot:
+      type: object
+      required: [generatedAt, summary, sites, standards]
+      properties:
+        generatedAt:
+          type: string
+          format: date-time
+        summary:
+          type: object
+        sites:
+          type: array
+          items:
+            allOf:
+              - $ref: "#/components/schemas/SiteRegistryRecord"
+              - type: object
+                properties:
+                  samples:
+                    type: object
+                  qc:
+                    $ref: "#/components/schemas/QcResult"
+        standards:
+          type: object
