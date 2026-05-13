@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="EcoStream — Environmental Intelligence System for West Wales catchment monitoring." />
+    <title>EcoStream — Catchment Data Explorer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@300,0..1&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <canvas id="flow-canvas" aria-hidden="true"></canvas>
+
+    <div class="app-shell">
+      <aside class="side-nav" aria-label="Primary">
+        <a class="side-brand" href="./" aria-label="EcoStream home">
+          <span class="material-symbols-outlined brand-icon">water_drop</span>
+          <span>
+            <strong>EcoStream</strong>
+            <small data-i18n="brand.subtitle">Catchment Monitoring</small>
+          </span>
+        </a>
+
+        <nav class="side-links" aria-label="Dashboard sections">
+          <button class="side-link active" type="button" data-view-tab="overview">
+            <span class="material-symbols-outlined">grid_view</span>
+            <span data-i18n="nav.overview">Dashboard</span>
+          </button>
+          <button class="side-link" type="button" data-view-tab="map">
+            <span class="material-symbols-outlined">map</span>
+            <span data-i18n="nav.map">Map</span>
+          </button>
+          <button class="side-link" type="button" data-view-tab="sites">
+            <span class="material-symbols-outlined">sensors</span>
+            <span data-i18n="nav.sites">Sites</span>
+          </button>
+          <button class="side-link" type="button" data-view-tab="data">
+            <span class="material-symbols-outlined">insert_chart</span>
+            <span data-i18n="nav.data">Data</span>
+          </button>
+        </nav>
+
+        <div class="side-spacer"></div>
+
+        <section class="partner-lockup" aria-label="Project partners">
+          <span data-i18n="shell.partner">In partnership with</span>
+          <div class="partner-logos">
+            <img class="council-logo" src="./carmarthenshire-official-header-logo.png" alt="Carmarthenshire County Council" />
+            <img class="aber-logo" src="./aberystwyth-logo.svg" alt="Aberystwyth University" />
+          </div>
+        </section>
+
+        <div class="side-footer">
+          <button class="btn-export" type="button">
+            <span class="material-symbols-outlined" style="font-size:18px">download</span>
+            <span data-i18n="shell.export">Export Report</span>
+          </button>
+          <a class="side-footer-link" href="#">
+            <span class="material-symbols-outlined">settings</span> <span data-i18n="shell.settings">Settings</span>
+          </a>
+          <a class="side-footer-link" href="#">
+            <span class="material-symbols-outlined">help_outline</span> <span data-i18n="shell.support">Support</span>
+          </a>
+        </div>
+      </aside>
+
+      <div class="main-shell">
+        <header class="top-nav">
+          <nav class="top-sections" aria-label="Quick sections">
+            <button class="top-link active" type="button" data-view-tab="overview" data-i18n="nav.overview">Dashboard</button>
+            <button class="top-link" type="button" data-view-tab="map" data-i18n="nav.map">Map</button>
+            <button class="top-link" type="button" data-view-tab="sites" data-i18n="nav.sites">Sites</button>
+            <button class="top-link" type="button" data-view-tab="data" data-i18n="nav.data">Data</button>
+          </nav>
+          <div class="top-actions">
+            <span class="sync-pill"><i></i> <span data-i18n="shell.liveSync">Live Sync Active</span></span>
+            <button class="language-toggle" type="button" data-lang-toggle aria-label="Switch language">
+              <span class="material-symbols-outlined">language</span>
+              <span data-lang-current>CY</span>
+            </button>
+            <button class="icon-btn" type="button" aria-label="Notifications">
+              <span class="material-symbols-outlined">notifications</span>
+              <i class="notif-dot"></i>
+            </button>
+          </div>
+        </header>
+
+        <main class="content-canvas">
+          <section class="page-header" aria-labelledby="page-title">
+            <div>
+              <p class="eyebrow" data-page-kicker>West Wales monitoring programme</p>
+              <h1 id="page-title" data-page-title>Overview</h1>
+              <p class="lede" data-page-lede>Real-time telemetry and catchment health metrics for river and coastal monitoring.</p>
+            </div>
+            <div class="view-toolbar">
+              <label for="catchment-filter" data-i18n="filter.label">Local registry view</label>
+              <select id="catchment-filter" class="select-field" data-catchment-filter aria-label="Catchment filter"></select>
+            </div>
+          </section>
+
+          <!-- VIEW: OVERVIEW -->
+          <section class="view active" data-view="overview">
+            <section class="overview-metrics" data-summary></section>
+            <section class="overview-main-grid">
+              <article class="card recent-qc-panel">
+                <div class="card-head">
+                  <div>
+                    <p class="eyebrow" data-i18n="overview.qcEyebrow">Quality control</p>
+                    <h2 data-i18n="overview.qcTitle">Recent QC Status</h2>
+                  </div>
+                  <button class="ghost-btn" type="button"><span data-i18n="overview.viewAll">View All</span> <span class="material-symbols-outlined" style="font-size:18px">arrow_forward</span></button>
+                </div>
+                <div class="table-wrap">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th data-i18n="table.device">Device</th>
+                        <th data-i18n="table.location">Location</th>
+                        <th data-i18n="table.lastSync">Last Sync</th>
+                        <th data-i18n="table.status">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody data-qc-table></tbody>
+                  </table>
+                </div>
+              </article>
+
+              <aside class="card quick-actions-panel">
+                <div class="card-head">
+                  <div>
+                    <p class="eyebrow" data-i18n="overview.actionsEyebrow">Actions</p>
+                    <h2 data-i18n="overview.actionsTitle">Quick Actions</h2>
+                  </div>
+                </div>
+                <button class="quick-action" type="button">
+                  <div class="qa-icon"><span class="material-symbols-outlined">download</span></div>
+                  <span data-i18n="overview.download">Download Latest Dataset</span>
+                  <span class="material-symbols-outlined qa-arrow">arrow_forward_ios</span>
+                </button>
+                <button class="quick-action" type="button">
+                  <div class="qa-icon"><span class="material-symbols-outlined">list_alt</span></div>
+                  <span data-i18n="overview.logs">View System Logs</span>
+                  <span class="material-symbols-outlined qa-arrow">arrow_forward_ios</span>
+                </button>
+                <button class="quick-action" type="button">
+                  <div class="qa-icon"><span class="material-symbols-outlined">build</span></div>
+                  <span data-i18n="overview.calibration">Calibration Records</span>
+                  <span class="material-symbols-outlined qa-arrow">arrow_forward_ios</span>
+                </button>
+                <div class="tip-card">
+                  <h4><span class="material-symbols-outlined" style="font-size:18px">info</span> <span data-i18n="overview.tipTitle">Did you know?</span></h4>
+                  <p data-i18n="overview.tipBody">The Catchment Analysis module supports multi-variable overlay. Try comparing flow rate against pH levels in the Data tab.</p>
+                </div>
+              </aside>
+            </section>
+          </section>
+
+          <!-- VIEW: MAP -->
+          <section class="view" data-view="map">
+            <section class="map-workbench" aria-label="Official catchment map workbench">
+              <iframe data-official-map class="official-map-frame map-background" src="https://www.ceredigion.gov.uk/public/csr/carmarthen_bay_and_the_gower_map.html?lang=en" title="Official catchment map" loading="lazy"></iframe>
+              <aside class="map-layers glass-panel">
+                <div class="map-panel-title">
+                  <span data-i18n="map.layers">Map Layers</span>
+                  <span class="material-symbols-outlined" style="font-size:20px;cursor:pointer">tune</span>
+                </div>
+                <label class="layer-row">
+                  <input type="checkbox" checked />
+                  <span class="material-symbols-outlined text-teal" style="font-size:20px">water_drop</span>
+                  <span data-i18n="map.liveSensors">Live Sensors</span>
+                </label>
+                <label class="layer-row">
+                  <input type="checkbox" checked />
+                  <span class="material-symbols-outlined" style="font-size:20px">map</span>
+                  <span data-i18n="map.catchmentBounds">Catchment Bounds</span>
+                </label>
+                <label class="layer-row">
+                  <input type="checkbox" />
+                  <span class="material-symbols-outlined" style="font-size:20px">terrain</span>
+                  <span data-i18n="map.accessConstraints">Access Constraints</span>
+                </label>
+                <div class="map-controls">
+                  <label for="official-map-select" data-i18n="map.selector">Catchment map</label>
+                  <select id="official-map-select" class="select-field" data-official-map-select aria-label="Official catchment map"></select>
+                  <a class="open-map-link" data-map-open href="#" target="_blank" rel="noopener" data-i18n="map.open">Open full map</a>
+                </div>
+              </aside>
+              <aside class="station-drawer glass-panel" data-station-drawer></aside>
+              <div class="map-tools" aria-label="Map tools">
+                <button type="button" aria-label="Zoom in"><span class="material-symbols-outlined">add</span></button>
+                <button type="button" aria-label="Zoom out"><span class="material-symbols-outlined">remove</span></button>
+                <button type="button" aria-label="Recenter"><span class="material-symbols-outlined">my_location</span></button>
+              </div>
+            </section>
+          </section>
+
+          <!-- VIEW: SITES -->
+          <section class="view" data-view="sites">
+            <section class="sensor-registry">
+              <div class="registry-heading">
+                <div>
+                  <p class="eyebrow" data-i18n="sites.eyebrow">Deployment registry</p>
+                  <h2 class="section-title" data-i18n="sites.title">Sensor Registry</h2>
+                </div>
+                <div class="registry-actions">
+                  <button class="ghost-btn" type="button"><span class="material-symbols-outlined" style="font-size:18px">tune</span> <span data-i18n="sites.filter">Filter</span></button>
+                  <button class="primary-btn" type="button"><span class="material-symbols-outlined" style="font-size:18px">add</span> <span data-i18n="sites.register">Register Device</span></button>
+                </div>
+              </div>
+              <article class="card registry-card">
+                <div class="registry-toolbar">
+                  <span data-registry-count>Showing 10 entries</span>
+                  <div class="search-field">
+                    <span class="material-symbols-outlined" style="font-size:18px">search</span>
+                    <input type="search" data-i18n-placeholder="sites.search" placeholder="Search registry..." />
+                  </div>
+                </div>
+                <div class="table-wrap">
+                  <table class="data-table registry-table">
+                    <thead>
+                      <tr>
+                        <th data-i18n="table.device">Device</th>
+                        <th data-i18n="table.locationName">Location Name</th>
+                        <th data-i18n="table.catchmentArea">Catchment Area</th>
+                        <th data-i18n="table.lastPing">Last Ping</th>
+                        <th data-i18n="table.status">Status</th>
+                        <th data-i18n="table.actions">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody data-registry></tbody>
+                  </table>
+                </div>
+              </article>
+            </section>
+          </section>
+
+          <!-- VIEW: DATA -->
+          <section class="view" data-view="data">
+            <section class="analysis-workspace">
+              <div class="filter-bar glass-panel">
+                <label class="filter-field">
+                  <span data-i18n="filter.parameter">Parameter</span>
+                  <select class="select-field">
+                    <option data-i18n="filter.optDO">Dissolved Oxygen (mg/L)</option>
+                    <option data-i18n="filter.optPH">pH Level</option>
+                    <option data-i18n="filter.optTurbidity">Turbidity (NTU)</option>
+                    <option data-i18n="filter.optNitrate">Nitrate (mg/L)</option>
+                  </select>
+                </label>
+                <label class="filter-field">
+                  <span data-i18n="filter.timeRange">Time Range</span>
+                  <select class="select-field">
+                    <option data-i18n="filter.last24h">Last 24 hours</option>
+                    <option data-i18n="filter.last7d">Last 7 days</option>
+                    <option data-i18n="filter.last30d">Last 30 days</option>
+                  </select>
+                </label>
+                <button class="primary-btn" type="button">
+                  <span class="material-symbols-outlined" style="font-size:18px">tune</span> <span data-i18n="filter.apply">Apply Filters</span>
+                </button>
+              </div>
+
+              <section class="analysis-grid">
+                <article class="card parameter-trends">
+                  <div class="card-head">
+                    <div>
+                      <p class="eyebrow" data-i18n="chart.eyebrow">SAC / WFD alignment</p>
+                      <h2 data-i18n="chart.title">Nutrient pressure</h2>
+                    </div>
+                    <span class="live-badge"><i></i> <span data-i18n="label.liveData">Live Data</span></span>
+                  </div>
+                  <div class="chart-area" data-chart></div>
+                </article>
+
+                <aside class="side-metrics">
+                  <article class="card metric-side-card">
+                    <div class="metric-side-icon bg-teal"><span class="material-symbols-outlined">water_drop</span></div>
+                    <h4 data-i18n="analysis.avgFlow">Average Flow Rate</h4>
+                    <div class="metric-side-value" data-avg-flow>—</div>
+                    <span class="metric-side-unit">m³/s</span>
+                    <div class="metric-side-trend trend-up" data-flow-trend>—</div>
+                  </article>
+                  <article class="card metric-side-card">
+                    <div class="metric-side-icon bg-blue"><span class="material-symbols-outlined">science</span></div>
+                    <h4 data-i18n="analysis.avgPH">Average pH Level</h4>
+                    <div class="metric-side-value" data-avg-ph>—</div>
+                    <span class="metric-side-unit">pH</span>
+                    <div class="metric-side-trend trend-stable" data-ph-trend></div>
+                  </article>
+                </aside>
+
+                <article class="card readings-card">
+                  <div class="card-head">
+                    <div>
+                      <p class="eyebrow" data-i18n="readings.eyebrow">Twice daily uploads</p>
+                      <h2 data-i18n="readings.title">Latest sensor readings</h2>
+                    </div>
+                    <button class="ghost-btn" type="button"><span class="material-symbols-outlined" style="font-size:18px">download</span> <span data-i18n="shell.exportCSV">Export CSV</span></button>
+                  </div>
+                  <div class="table-wrap">
+                    <table class="data-table">
+                      <thead>
+                        <tr>
+                          <th data-i18n="table.site">Site</th>
+                          <th data-i18n="table.qc">QC</th>
+                          <th data-i18n="table.flow">Flow</th>
+                          <th data-i18n="table.do">DO</th>
+                          <th data-i18n="table.ec">EC</th>
+                          <th data-i18n="table.ph">pH</th>
+                          <th data-i18n="table.temp">Temp</th>
+                          <th data-i18n="table.nitrate">Nitrate</th>
+                          <th data-i18n="table.ammonium">Ammonium</th>
+                        </tr>
+                      </thead>
+                      <tbody data-readings></tbody>
+                    </table>
+                  </div>
+                </article>
+
+                <aside class="card data-quality-panel">
+                  <div class="card-head">
+                    <div>
+                      <p class="eyebrow" data-i18n="standards.eyebrow">Compliance frame</p>
+                      <h2 data-i18n="standards.title">Official threshold checks</h2>
+                    </div>
+                  </div>
+                  <div class="standard-grid" data-standards></div>
+                </aside>
+              </section>
+            </section>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>
