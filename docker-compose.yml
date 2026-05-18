@@ -1,20 +1,28 @@
 services:
-  # nginx 反向代理 — 唯一对外暴露 3000 的入口
+  # nginx reverse proxy: the only public listener on 3000.
   proxy:
     build: ./proxy
     ports:
       - "3000:3000"
     depends_on:
-      - emwac
+      - new-emwac
       - camathern
     restart: unless-stopped
 
-  # 原有 EMWAC 项目 — 内部访问，不对外暴露端口
-  emwac:
-    image: emwac/emwac:v7.0
+  # New EMWAC app: internal only, reached through proxy.
+  new-emwac:
+    image: emwac-web:latest
+    pull_policy: never
+    expose:
+      - "3000"
+    environment:
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
     restart: unless-stopped
 
-  # CAMATHERN2 — 内部访问，不对外暴露端口
+  # CAMATHERN2: internal only, reached through proxy at /cam/.
   camathern:
     build: .
+    expose:
+      - "80"
     restart: unless-stopped
