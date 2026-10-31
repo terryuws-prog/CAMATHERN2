@@ -169,6 +169,22 @@ def test_extra_fields_and_odd_values(client, key):
     assert ts == [("2026-10-27 15:00",), ("2026-10-27 15:00",)]
 
 
+def test_blank_csv_fields_are_null(client, key):
+    body = post(client, key, {"records": [record(80, ph="", do_ok="  ", temp_source="")]}).json()
+    assert body["inserted"] == 1, body
+    assert query("SELECT ph, do_ok, temp_source FROM readings WHERE sample_seq = 80") == [(None, None, None)]
+
+
+def test_missing_timestamp_ok_with_boot_count(client, key):
+    body = post(client, key, {"records": [record(81, boot=5, timestamp_utc="", rtc_ok=0),
+                                          record(82, boot=5, timestamp_utc=None, rtc_ok=0)]}).json()
+    assert (body["inserted"], body["rejected"]) == (2, 0), body
+    assert post(client, key, {"records": [record(81, boot=5, timestamp_utc="", rtc_ok=0)]}).json()["duplicates"] == 1
+    no_identity = record(83, timestamp_utc=None)
+    del no_identity["boot_count"]
+    assert post(client, key, {"records": [no_identity]}).json()["rejected"] == 1
+
+
 def test_read_back_and_disable(client, key):
     r = client.get(URL + "?limit=5", headers={"X-API-Key": key})
     assert r.status_code == 200 and len(r.json()["readings"]) == 5

@@ -64,12 +64,12 @@ Each record follows the current SD logging schema, plus `boot_count`:
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| `boot_count` | integer ≥ 0 | **requested** | Persistent counter incremented on every boot (EEPROM/SD). See *Record identity*. |
+| `boot_count` | integer ≥ 0 | yes (agreed) | Persistent counter incremented on every boot, stored on the SD card. See *Record identity*. |
 | `sample_seq` | integer ≥ 0 | yes | Resets on reboot — that is fine with `boot_count`. |
-| `timestamp_utc` | string or integer | yes | ISO 8601 UTC, e.g. `2026-10-27T15:00:00Z`. Unix seconds also accepted. No timezone = UTC. |
+| `timestamp_utc` | string, integer or `null` | yes, unless `boot_count` is sent | ISO 8601 UTC, e.g. `2026-10-27T15:00:00Z` (`2026-10-27 15:00:00` and Unix seconds also accepted; no timezone = UTC). May be `null` when the RTC is invalid; the record is still stored. |
 | `rtc_ok` | bool | no | |
 | `uptime_s` | integer | no | |
-| `ph`, `temp_c`, `ec_us_cm`, `do_mg_l`, `nh4_reported_mg_l`, `no3_reported_mg_l`, `flow_l_min`, `depth_m`, `voltage_v` | number or `null` | no | **Use `null` for "no valid reading"**, not a sentinel such as -999. `NaN` is also turned into `null`. |
+| `ph`, `temp_c`, `ec_us_cm`, `do_mg_l`, `nh4_reported_mg_l`, `no3_reported_mg_l`, `flow_l_min`, `depth_m`, `voltage_v` | number or `null` | no | **Use `null` for "no valid reading"**, not a sentinel such as -999. `NaN` and blank strings (`""`) are also treated as `null`. |
 | `do_ok`, `ph_ok`, `ec_ok`, `nh4_ok`, `no3_ok`, `temp_ok`, `flow_placeholder` | bool | no | `true`/`false` or `1`/`0`. |
 | `temp_source` | string | no | |
 | `test_mode` | bool | no | Default `false`. Test data is stored but hidden from the dashboard. |
