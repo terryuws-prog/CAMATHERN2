@@ -31,6 +31,7 @@ services:
   ingest-api:
     build: ./ingest
     image: camathern-ingest:latest
+    pull_policy: build   # always rebuild on redeploy, never pull from Docker Hub
     expose:
       - "8000"
     environment:
@@ -50,6 +51,7 @@ services:
   ingest-api-dev:
     build: ./ingest
     image: camathern-ingest:latest
+    pull_policy: build   # always rebuild on redeploy, never pull from Docker Hub
     expose:
       - "8000"
     environment:
