@@ -194,6 +194,41 @@ def test_read_back_and_disable(client, key):
     assert post(client, key, {"records": []}).status_code == 200
 
 
+def test_dashboard_endpoint(client, key):
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    def at(minutes_ago):
+        return (now - timedelta(minutes=minutes_ago)).isoformat().replace("+00:00", "Z")
+    dash_key = new_device("node-dash")
+    def rec(seq, **kw):
+        return record(seq, node_id="node-dash", **kw)
+    post(client, dash_key, {"records": [
+        rec(900, boot=50, timestamp_utc=at(150), ph=7.0, flow_l_min=120, flow_placeholder=0),
+        rec(901, boot=50, timestamp_utc=at(90), ph=7.2, flow_l_min=120, flow_placeholder=0),
+        rec(902, boot=50, timestamp_utc=at(30), ph=7.4, ph_ok=1, do_mg_l=9.0, do_ok=0,
+               flow_l_min=60, flow_placeholder=1),
+        rec(903, boot=50, timestamp_utc=at(5), ph=9.9, test_mode=1),
+    ]})
+    body = client.get("/api/v1/dashboard").json()
+    node = next(n for n in body["nodes"] if n["deviceId"] == "node-dash")
+    assert node["name"] == "test"
+    assert node["samples"]["ph"] == 7.4                 # test_mode record (9.9) excluded
+    assert node["samples"]["dissolvedOxygen"] is None   # do_ok = 0
+    assert node["samples"]["flow"] is None              # placeholder flow
+    assert node["observedAt"] == at(30)
+    assert node["tideState"] == "unknown" and node["testMode"] is False
+    hours = [h["hour"] for h in node["history"]]
+    assert hours == sorted(hours) and len(hours) >= 2
+    assert any(h["flow"] is not None and abs(h["flow"] - 0.002) < 1e-9 for h in node["history"])  # 120 L/min
+    assert "api_key" not in json.dumps(body) and "boot_count" not in json.dumps(body)
+
+    with_test = client.get("/api/v1/dashboard?include_test=true").json()
+    assert next(n for n in with_test["nodes"] if n["deviceId"] == "node-dash")["samples"]["ph"] == 9.9
+    assert manage.main(["disable", "node-dash"]) == 0
+    assert all(n["deviceId"] != "node-dash" for n in client.get("/api/v1/dashboard").json()["nodes"])
+    assert client.get("/api/v1/dashboard?hours=0").status_code == 422
+
+
 def test_raw_batches_kept(client, key):
     n_batches, n_records = query("SELECT count(*), sum(record_count) FROM raw_batches")[0]
     assert n_batches > 5 and n_records > 10

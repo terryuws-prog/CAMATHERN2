@@ -9,6 +9,10 @@ export const catchments = [
   { id: "taf", name: "Taf", nameCy: "Taf", area: "Carmarthenshire", type: "river", sites: 3 },
 ];
 
+// Council registry: where each device is installed. Device payloads carry an
+// ID only, so a live device appears at a site when its deviceId here matches
+// the node_id it uploads with (e.g. change "KNR-TYWI-001" to "node-01").
+// Devices not listed here are shown under "Unassigned".
 export const siteRegistry = [
   {
     id: "manorafon",
@@ -169,89 +173,6 @@ export const siteRegistry = [
     deploymentCy: "Rheolydd safonol gyda llinyn aml-synhwyrydd",
     telemetry: "LoRaWAN",
     locationSource: councilRegistrySource,
-  },
-];
-
-export const kunerPayloads = [
-  {
-    deviceId: "KNR-TYWI-001",
-    transmittedAt: "2026-05-11T06:00:00Z",
-    battery: 86,
-    tideState: "submerged",
-    sensorDepthM: 0.72,
-    samples: { flow: 2.4, dissolvedOxygen: 8.8, conductivity: 318, ph: 7.4, temperature: 12.6, nitrate: 2.1, ammonium: 0.09, phosphateManual: 0.034 },
-  },
-  {
-    deviceId: "KNR-TYWI-002",
-    transmittedAt: "2026-05-11T06:00:00Z",
-    battery: 78,
-    tideState: "submerged",
-    sensorDepthM: 0.48,
-    samples: { flow: 1.9, dissolvedOxygen: 7.7, conductivity: 352, ph: 7.1, temperature: 13.4, nitrate: 3.2, ammonium: 0.14, phosphateManual: 0.041 },
-  },
-  {
-    deviceId: "KNR-TYWI-003",
-    transmittedAt: "2026-05-11T06:00:00Z",
-    battery: 91,
-    tideState: "submerged",
-    sensorDepthM: 0.84,
-    samples: { flow: 2.7, dissolvedOxygen: 9.2, conductivity: 287, ph: 7.6, temperature: 11.9, nitrate: 1.7, ammonium: 0.07, phosphateManual: 0.025 },
-  },
-  {
-    deviceId: "KNR-TAF-004",
-    transmittedAt: "2026-05-11T06:00:00Z",
-    battery: 64,
-    tideState: "submerged",
-    sensorDepthM: 0.32,
-    samples: { flow: 1.4, dissolvedOxygen: 7.2, conductivity: 401, ph: 6.9, temperature: 14.1, nitrate: 4.5, ammonium: 0.22, phosphateManual: 0.062 },
-  },
-  {
-    deviceId: "KNR-CLED-005",
-    transmittedAt: "2026-05-11T06:00:00Z",
-    battery: 73,
-    tideState: "exposed",
-    sensorDepthM: 0.04,
-    samples: { flow: 0, dissolvedOxygen: 14.6, conductivity: 910, ph: 8.6, temperature: 18.5, nitrate: 0.6, ammonium: 0.02, phosphateManual: 0.018 },
-  },
-  {
-    deviceId: "KNR-CLED-006",
-    transmittedAt: "2026-05-11T06:00:00Z",
-    battery: 88,
-    tideState: "submerged",
-    sensorDepthM: 0.67,
-    samples: { flow: 2.1, dissolvedOxygen: 8.1, conductivity: 366, ph: 7.3, temperature: 13.2, nitrate: 2.8, ammonium: 0.12, phosphateManual: 0.037 },
-  },
-  {
-    deviceId: "KNR-CLED-007",
-    transmittedAt: "2026-05-11T06:00:00Z",
-    battery: 57,
-    tideState: "submerged",
-    sensorDepthM: 0.55,
-    samples: { flow: 1.8, dissolvedOxygen: 7.6, conductivity: 389, ph: 7.0, temperature: 13.8, nitrate: 3.8, ammonium: 0.18, phosphateManual: 0.052 },
-  },
-  {
-    deviceId: "KNR-MH-008",
-    transmittedAt: "2026-05-11T06:00:00Z",
-    battery: 82,
-    tideState: "submerged",
-    sensorDepthM: 1.05,
-    samples: { flow: 3.6, dissolvedOxygen: 8.6, conductivity: 1120, ph: 7.8, temperature: 12.9, nitrate: 2.4, ammonium: 0.1, phosphateManual: 0.044 },
-  },
-  {
-    deviceId: "KNR-ABER-009",
-    transmittedAt: "2026-05-11T06:00:00Z",
-    battery: 94,
-    tideState: "submerged",
-    sensorDepthM: 0.93,
-    samples: { flow: 2.8, dissolvedOxygen: 9.1, conductivity: 760, ph: 7.7, temperature: 11.6, nitrate: 1.9, ammonium: 0.08, phosphateManual: 0.031 },
-  },
-  {
-    deviceId: "KNR-CLWYD-010",
-    transmittedAt: "2026-05-11T06:00:00Z",
-    battery: 90,
-    tideState: "submerged",
-    sensorDepthM: 0.61,
-    samples: { flow: 2.2, dissolvedOxygen: 8.4, conductivity: 341, ph: 7.4, temperature: 12.2, nitrate: 2.3, ammonium: 0.1, phosphateManual: 0.029 },
   },
 ];
 

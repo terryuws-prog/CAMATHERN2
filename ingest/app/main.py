@@ -3,6 +3,7 @@ import logging
 import math
 import os
 import zlib
+from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -300,6 +301,92 @@ async def recent(limit: int = Query(20, ge=1, le=500),
     if node_id is None:
         return error(401, "invalid_api_key", "API key is missing, unknown or the device is disabled.")
     return {"node_id": node_id, "readings": await run_in_threadpool(latest_readings, node_id, limit)}
+
+
+# ---------- public dashboard (read-only, no key) ----------
+#
+# Shapes the data the way the CAMATHERN dashboard expects it: frontend field
+# names, flow in m3/s, readings whose sensor flag is false (or a placeholder
+# flow) shown as null, and test_mode records left out unless asked for.
+
+# Time of observation: the device clock when it was valid, else arrival time.
+OBS_TIME = "coalesce(CASE WHEN rtc_ok IS NOT FALSE THEN timestamp_utc END, received_at)"
+
+DASHBOARD_SAMPLES = {
+    # frontend key: SQL expression
+    "ph": "CASE WHEN ph_ok IS NOT FALSE THEN ph END",
+    "temperature": "CASE WHEN temp_ok IS NOT FALSE THEN temp_c END",
+    "conductivity": "CASE WHEN ec_ok IS NOT FALSE THEN ec_us_cm END",
+    "dissolvedOxygen": "CASE WHEN do_ok IS NOT FALSE THEN do_mg_l END",
+    "nitrate": "CASE WHEN no3_ok IS NOT FALSE THEN no3_reported_mg_l END",
+    "ammonium": "CASE WHEN nh4_ok IS NOT FALSE THEN nh4_reported_mg_l END",
+    "flow": "CASE WHEN flow_placeholder IS NOT TRUE THEN flow_l_min / 60000.0 END",  # L/min -> m3/s
+}
+
+DASHBOARD_FILTER = "d.active AND (%(include_test)s OR NOT r.test_mode)"
+
+DASHBOARD_LATEST_SQL = f"""
+    SELECT DISTINCT ON (r.node_id)
+           r.node_id, d.name, r.received_at, {OBS_TIME} AS observed_at, r.rtc_ok,
+           r.voltage_v, r.depth_m, r.test_mode,
+           {", ".join(f'{expr} AS "{key}"' for key, expr in DASHBOARD_SAMPLES.items())}
+    FROM readings r JOIN devices d ON d.node_id = r.node_id
+    WHERE {DASHBOARD_FILTER}
+    ORDER BY r.node_id, {OBS_TIME} DESC, r.id DESC
+"""
+
+DASHBOARD_HISTORY_SQL = f"""
+    SELECT r.node_id, date_trunc('hour', {OBS_TIME}) AS hour,
+           {", ".join(f'avg({expr}) AS "{key}"' for key, expr in DASHBOARD_SAMPLES.items())}
+    FROM readings r JOIN devices d ON d.node_id = r.node_id
+    WHERE {DASHBOARD_FILTER}
+      AND {OBS_TIME} >= now() - make_interval(hours => %(hours)s)
+    GROUP BY 1, 2
+    ORDER BY 1, 2
+"""
+
+
+def iso(value: Optional[datetime]) -> Optional[str]:
+    if value is None:
+        return None
+    return value.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def dashboard_data(hours: int, include_test: bool) -> dict:
+    params = {"hours": hours, "include_test": include_test}
+    with db.pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        latest = cur.execute(DASHBOARD_LATEST_SQL, params).fetchall()
+        history_rows = cur.execute(DASHBOARD_HISTORY_SQL, params).fetchall()
+
+    history = defaultdict(list)
+    for row in history_rows:
+        history[row["node_id"]].append(
+            {"hour": iso(row["hour"]), **{key: row[key] for key in DASHBOARD_SAMPLES}}
+        )
+
+    nodes = [{
+        "deviceId": row["node_id"],
+        "name": row["name"],
+        "observedAt": iso(row["observed_at"]),
+        "receivedAt": iso(row["received_at"]),
+        "rtcOk": row["rtc_ok"],
+        "voltageV": row["voltage_v"],
+        "sensorDepthM": row["depth_m"],
+        "tideState": "unknown",
+        "testMode": row["test_mode"],
+        "samples": {key: row[key] for key in DASHBOARD_SAMPLES},
+        "history": history.get(row["node_id"], []),
+    } for row in latest]
+    return {"generatedAt": now_iso(), "hours": hours, "includeTest": include_test, "nodes": nodes}
+
+
+@app.get("/api/v1/dashboard", summary="Latest reading and hourly history per node, for the public dashboard")
+async def dashboard(hours: int = Query(24, ge=1, le=168, description="History window in hours"),
+                    include_test: bool = Query(False, description="Include records sent with test_mode=true")):
+    """Read-only and public (no API key). Only active nodes with at least one
+    reading are listed. Flow is in m3/s; values whose sensor flag is false are null."""
+    data = await run_in_threadpool(dashboard_data, hours, include_test)
+    return JSONResponse(data, headers={"Cache-Control": "public, max-age=30"})
 
 
 @app.get("/healthz", include_in_schema=False)
