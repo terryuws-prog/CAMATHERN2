@@ -2,7 +2,7 @@ import math
 from datetime import datetime, timezone
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 BIGINT_MAX = 2**63 - 1
 
@@ -16,7 +16,11 @@ class Record(BaseModel):
     """One row of the SD logging schema, plus boot_count.
 
     Lenient on purpose: 0/1 and "true"/"false" are accepted for booleans,
-    NaN/inf become NULL, and unknown fields are kept in readings.extra.
+    blank strings and NaN/inf become NULL, and unknown fields are kept in
+    readings.extra.
+
+    Identity is node_id + boot_count + sample_seq, so timestamp_utc may be
+    null (e.g. RTC invalid) as long as boot_count is sent.
     """
 
     model_config = ConfigDict(extra="allow")
@@ -26,7 +30,7 @@ class Record(BaseModel):
     fw_version: Optional[str] = None       # optional per record; overrides the batch-level value
     boot_count: Optional[int] = Field(default=None, ge=0, le=BIGINT_MAX)
     sample_seq: int = Field(ge=0, le=BIGINT_MAX)
-    timestamp_utc: datetime                # ISO 8601 ("2026-10-27T15:00:00Z") or Unix seconds
+    timestamp_utc: Optional[datetime] = None  # ISO 8601 ("2026-10-27T15:00:00Z") or Unix seconds
 
     # diagnostics
     rtc_ok: Optional[bool] = None
@@ -54,9 +58,25 @@ class Record(BaseModel):
     flow_placeholder: Optional[bool] = None
     test_mode: bool = False
 
+    @model_validator(mode="before")
+    @classmethod
+    def blank_is_null(cls, data):
+        """Blank CSV cells ("" or spaces) mean "no value"."""
+        if isinstance(data, dict):
+            return {k: (None if isinstance(v, str) and not v.strip() else v) for k, v in data.items()}
+        return data
+
+    @model_validator(mode="after")
+    def needs_identity(self):
+        if self.timestamp_utc is None and self.boot_count is None:
+            raise ValueError("timestamp_utc is required when boot_count is not sent")
+        return self
+
     @field_validator("timestamp_utc")
     @classmethod
-    def assume_utc(cls, value: datetime) -> datetime:
+    def assume_utc(cls, value: Optional[datetime]) -> Optional[datetime]:
+        if value is None:
+            return None
         if value.tzinfo is None:
             return value.replace(tzinfo=timezone.utc)
         return value.astimezone(timezone.utc)

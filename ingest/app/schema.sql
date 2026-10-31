@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS readings (
     node_id            text NOT NULL REFERENCES devices (node_id),
     boot_count         bigint,
     sample_seq         bigint NOT NULL,
-    timestamp_utc      timestamptz NOT NULL,
+    timestamp_utc      timestamptz,          -- NULL allowed when the RTC was invalid (boot_count identifies the record)
     received_at        timestamptz NOT NULL DEFAULT now(),
     batch_id           bigint REFERENCES raw_batches (id),
     fw_version         text,
@@ -64,6 +64,9 @@ CREATE TABLE IF NOT EXISTS readings (
     -- any fields the firmware sends that are not columns yet
     extra              jsonb
 );
+
+-- Databases created before timestamp_utc became nullable.
+ALTER TABLE readings ALTER COLUMN timestamp_utc DROP NOT NULL;
 
 -- De-duplication. Preferred key: node_id + boot_count + sample_seq.
 -- Fallback while boot_count is not sent: node_id + timestamp_utc.
