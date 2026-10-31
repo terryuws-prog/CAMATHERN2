@@ -34,6 +34,7 @@ node --test tests/*.mjs
 ```
 ├── api/
 │   └── openapi.yaml          # REST API contract
+├── ingest/                   # Sensor ingestion API + Postgres (see ingest/README.md)
 ├── assets/
 │   ├── index.html             # Single-page application shell
 │   ├── src/
@@ -51,6 +52,13 @@ node --test tests/*.mjs
 │   └── i18n.test.mjs
 └── package.json
 ```
+
+## Sensor Ingestion API
+
+Cellular field nodes upload readings to `https://rivermonitor.aber.ac.uk/cam/api/v1/readings`
+(testing: `/cam/dev/`). The service and its PostgreSQL database run in the same
+Docker stack, behind the proxy. Setup, API keys and backups: `ingest/README.md`.
+Firmware spec: `ingest/API.md`.
 
 ## Data Architecture
 
