@@ -1,5 +1,6 @@
 import { createDashboardSnapshot } from "./dashboard-model.js";
 import { translate } from "./i18n.js";
+import { REFRESH_INTERVAL_MS, dataSource, fetchDashboard } from "./live-data.js";
 import { startWaterFlow } from "./water-flow.js";
 
 const state = {
@@ -7,10 +8,13 @@ const state = {
   catchment: "all",
   view: "overview",
   officialMap: "tywi",
+  source: dataSource(),
+  dataStatus: "loading", // loading | ready | error
   snapshot: createDashboardSnapshot(),
 };
 
 const formatter = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 2 });
+const smallFormatter = new Intl.NumberFormat("en-GB", { maximumSignificantDigits: 2 });
 const timeFormatter = new Intl.DateTimeFormat("en-GB", {
   day: "2-digit",
   month: "short",
@@ -105,12 +109,63 @@ function t(key) {
   return translate(state.language, key);
 }
 
+function isNumber(value) {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function formatNumber(value) {
+  if (!isNumber(value)) return "—";
+  return value !== 0 && Math.abs(value) < 0.1 ? smallFormatter.format(value) : formatter.format(value);
+}
+
+function formatTime(value) {
+  return value ? timeFormatter.format(new Date(value)) : "—";
+}
+
+// One table row explaining why a table is empty.
+function statusRow(columns) {
+  const key = state.dataStatus === "loading" ? "live.loading" : state.dataStatus === "error" ? "live.error" : "live.empty";
+  return `<tr class="empty-row"><td colspan="${columns}">${t(key)}</td></tr>`;
+}
+
+// Hourly averages across the given sites, oldest first.
+function hourlySeries(sites, key) {
+  const buckets = new Map();
+  for (const site of sites) {
+    for (const point of site.history ?? []) {
+      if (!isNumber(point[key])) continue;
+      const bucket = buckets.get(point.hour) ?? { total: 0, count: 0 };
+      bucket.total += point[key];
+      bucket.count += 1;
+      buckets.set(point.hour, bucket);
+    }
+  }
+  return [...buckets.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([, bucket]) => bucket.total / bucket.count);
+}
+
+function trendOf(series) {
+  if (series.length < 2 || series[0] === 0) return { text: "—", dir: "stable" };
+  const change = ((series[series.length - 1] - series[0]) / Math.abs(series[0])) * 100;
+  const dir = Math.abs(change) < 0.5 ? "stable" : change > 0 ? "up" : "down";
+  return { text: `${change > 0 ? "+" : ""}${change.toFixed(1)}%`, dir };
+}
+
+function sparkHeights(series) {
+  const recent = series.slice(-6);
+  if (!recent.length) return [];
+  const min = Math.min(...recent);
+  const max = Math.max(...recent);
+  return recent.map((value) => (max === min ? 60 : 20 + ((value - min) / (max - min)) * 80));
+}
+
 function siteName(site) {
   return state.language === "cy" ? site.nameCy : site.name;
 }
 
 function localText(item, key) {
-  return state.language === "cy" ? item[`${key}Cy`] || item[key] : item[key];
+  return (state.language === "cy" ? item[`${key}Cy`] || item[key] : item[key]) || "";
 }
 
 function selectedSites() {
@@ -138,12 +193,20 @@ function mapSites() {
 }
 
 function metricValue(site, key) {
-  return formatter.format(site.samples[key]);
+  return formatNumber(site.samples[key]);
 }
 
+// Value with its unit, or just "—" when there is no value.
+function metricWithUnit(site, key, unitKey) {
+  const value = metricValue(site, key);
+  return value === "—" ? value : `${value} <small>${t(unitKey)}</small>`;
+}
+
+// Average of the sites that have a value; null when none do.
 function average(sites, key) {
-  if (!sites.length) return 0;
-  return sites.reduce((total, site) => total + site.samples[key], 0) / sites.length;
+  const values = sites.map((site) => site.samples[key]).filter(isNumber);
+  if (!values.length) return null;
+  return values.reduce((total, value) => total + value, 0) / values.length;
 }
 
 function setLanguage(language) {
@@ -168,55 +231,46 @@ function renderPageHeader() {
   document.querySelector("[data-page-kicker]").textContent = copy.kicker;
   document.querySelector("[data-page-title]").textContent = copy.title;
   document.querySelector("[data-page-lede]").textContent = copy.lede;
+  renderSourceNote();
+}
+
+function renderSourceNote() {
+  const note = document.querySelector("[data-source-note]");
+  if (!note) return;
+
+  const parts = [];
+  if (state.source === "dev") parts.push(t("live.testSource"));
+  if (state.dataStatus === "loading") parts.push(t("live.loading"));
+  else if (state.dataStatus === "error") parts.push(t("live.error"));
+  else parts.push(`${t(state.source === "dev" ? "live.updatedShort" : "live.updated")} ${formatTime(state.snapshot.generatedAt)}`);
+
+  note.textContent = parts.join(" · ");
+  note.hidden = false;
+  note.classList.toggle("is-test", state.source === "dev");
+  note.classList.toggle("is-error", state.dataStatus === "error");
 }
 
 function renderSummary() {
   const sites = selectedSites();
-  const cards = [
-    {
-      icon: "water_drop",
-      label: t("kpi.flowRate"),
-      value: formatter.format(average(sites, "flow")),
-      unit: t("unit.flow"),
-      trend: "+2.4%",
-      trendDir: "up",
-      glowClass: "glow-teal",
-      sparkClass: "spark-teal",
-    },
-    {
-      icon: "science",
-      label: t("kpi.phLevel"),
-      value: formatter.format(average(sites, "ph")),
-      unit: "",
-      trend: "0.0%",
-      trendDir: "stable",
-      glowClass: "glow-teal",
-      sparkClass: "spark-gray",
-    },
-    {
-      icon: "air",
-      label: t("kpi.dissolvedO2"),
-      value: formatter.format(average(sites, "dissolvedOxygen")),
-      unit: t("unit.do"),
-      trend: "-1.2%",
-      trendDir: "down",
-      glowClass: "glow-red",
-      sparkClass: "spark-red",
-    },
-    {
-      icon: "thermostat",
-      label: t("kpi.temperature"),
-      value: formatter.format(average(sites, "temperature")),
-      unit: t("unit.temp"),
-      trend: "+0.5%",
-      trendDir: "up",
-      glowClass: "glow-teal",
-      sparkClass: "spark-teal",
-    },
+  const kpis = [
+    { key: "flow", icon: "water_drop", label: t("kpi.flowRate"), unit: t("unit.flow"), glowClass: "glow-teal", sparkClass: "spark-teal" },
+    { key: "ph", icon: "science", label: t("kpi.phLevel"), unit: "", glowClass: "glow-teal", sparkClass: "spark-gray" },
+    { key: "dissolvedOxygen", icon: "air", label: t("kpi.dissolvedO2"), unit: t("unit.do"), glowClass: "glow-red", sparkClass: "spark-red" },
+    { key: "temperature", icon: "thermostat", label: t("kpi.temperature"), unit: t("unit.temp"), glowClass: "glow-teal", sparkClass: "spark-teal" },
   ];
+  const cards = kpis.map((kpi) => {
+    const series = hourlySeries(sites, kpi.key);
+    const trend = trendOf(series);
+    return {
+      ...kpi,
+      value: formatNumber(average(sites, kpi.key)),
+      trend: trend.text,
+      trendDir: trend.dir,
+      heights: sparkHeights(series),
+    };
+  });
 
   const trendIcon = { up: "arrow_upward", down: "arrow_downward", stable: "horizontal_rule" };
-  const heights = [40, 60, 50, 70, 90, 100];
 
   document.querySelector("[data-summary]").innerHTML = cards.map((card) => `
     <article class="metric-card">
@@ -225,15 +279,15 @@ function renderSummary() {
         <span class="metric-label">
           <span class="material-symbols-outlined">${card.icon}</span> ${card.label}
         </span>
-        <span class="metric-trend trend-${card.trendDir}">
+        ${card.trend === "—" ? "" : `<span class="metric-trend trend-${card.trendDir}">
           <span class="material-symbols-outlined">${trendIcon[card.trendDir]}</span> ${card.trend}
-        </span>
+        </span>`}
       </div>
       <div class="metric-value">
-        <strong>${card.value}</strong>${card.unit ? `<em>${card.unit}</em>` : ""}
+        <strong>${card.value}</strong>${card.unit && card.value !== "—" ? `<em>${card.unit}</em>` : ""}
       </div>
       <div class="sparkline">
-        ${heights.map((h, i) => `<i class="${i === heights.length - 1 ? card.sparkClass + "-active" : card.sparkClass}" style="height:${h}%"></i>`).join("")}
+        ${card.heights.map((h, i) => `<i class="${i === card.heights.length - 1 ? card.sparkClass + "-active" : card.sparkClass}" style="height:${h}%"></i>`).join("")}
       </div>
     </article>
   `).join("");
@@ -248,6 +302,9 @@ function renderCatchmentFilter() {
       return `<option value="${catchment.name}">${label}</option>`;
     }),
   ].join("");
+  if (state.catchment !== "all" && !state.snapshot.catchments.some((catchment) => catchment.name === state.catchment)) {
+    state.catchment = "all";
+  }
   filter.value = state.catchment;
 }
 
@@ -255,14 +312,20 @@ function renderQcTable() {
   const target = document.querySelector("[data-qc-table]");
   if (!target) return;
 
-  target.innerHTML = selectedSites().slice(0, 6).map((site) => `
+  const sites = selectedSites();
+  if (!sites.length) {
+    target.innerHTML = statusRow(4);
+    return;
+  }
+
+  target.innerHTML = sites.slice(0, 6).map((site) => `
     <tr>
       <td>
         <strong>${site.deviceId}</strong>
         <small>${site.telemetry}</small>
       </td>
       <td>${siteName(site)}</td>
-      <td>${timeFormatter.format(new Date(site.transmittedAt))}</td>
+      <td>${formatTime(site.transmittedAt)}</td>
       <td>
         <span class="qc-pill ${site.qc.valid ? "valid" : "invalid"}">
           <span class="material-symbols-outlined">${site.qc.valid ? "check_circle" : "warning"}</span>
@@ -328,7 +391,13 @@ function renderReadings() {
   const target = document.querySelector("[data-readings]");
   if (!target) return;
 
-  target.innerHTML = selectedSites().map((site) => `
+  const sites = selectedSites();
+  if (!sites.length) {
+    target.innerHTML = statusRow(9);
+    return;
+  }
+
+  target.innerHTML = sites.map((site) => `
     <tr>
       <td>
         <strong>${siteName(site)}</strong>
@@ -340,13 +409,13 @@ function renderReadings() {
           ${site.qc.valid ? t("label.valid") : t("label.invalid")}
         </span>
       </td>
-      <td>${metricValue(site, "flow")} <small>${t("unit.flow")}</small></td>
-      <td>${metricValue(site, "dissolvedOxygen")} <small>${t("unit.do")}</small></td>
-      <td>${metricValue(site, "conductivity")} <small>${t("unit.ec")}</small></td>
+      <td>${metricWithUnit(site, "flow", "unit.flow")}</td>
+      <td>${metricWithUnit(site, "dissolvedOxygen", "unit.do")}</td>
+      <td>${metricWithUnit(site, "conductivity", "unit.ec")}</td>
       <td>${metricValue(site, "ph")}</td>
-      <td>${metricValue(site, "temperature")} <small>${t("unit.temp")}</small></td>
-      <td>${metricValue(site, "nitrate")} <small>${t("unit.nutrient")}</small></td>
-      <td>${metricValue(site, "ammonium")} <small>${t("unit.nutrient")}</small></td>
+      <td>${metricWithUnit(site, "temperature", "unit.temp")}</td>
+      <td>${metricWithUnit(site, "nitrate", "unit.nutrient")}</td>
+      <td>${metricWithUnit(site, "ammonium", "unit.nutrient")}</td>
     </tr>
   `).join("");
 }
@@ -355,7 +424,11 @@ function renderChart() {
   const target = document.querySelector("[data-chart]");
   if (!target) return;
 
-  const sites = selectedSites().slice(0, 6);
+  const sites = selectedSites().filter((site) => isNumber(site.samples.nitrate)).slice(0, 6);
+  if (!sites.length) {
+    target.innerHTML = `<div class="chart-empty">${state.dataStatus === "ready" ? t("live.noChartData") : t(state.dataStatus === "error" ? "live.error" : "live.loading")}</div>`;
+    return;
+  }
   const values = sites.map((site) => site.samples.nitrate);
   const maxValue = Math.max(state.snapshot.standards.nitrate.max, ...values);
   const points = values.map((value, index) => {
@@ -398,10 +471,16 @@ function renderSideMetrics() {
   const flowTrend = document.querySelector("[data-flow-trend]");
   const phTrend = document.querySelector("[data-ph-trend]");
 
-  if (avgFlow) avgFlow.textContent = formatter.format(average(sites, "flow"));
-  if (avgPh) avgPh.textContent = formatter.format(average(sites, "ph"));
-  if (flowTrend) flowTrend.textContent = `+2.4% ${t("analysis.vsLastMonth")}`;
-  if (phTrend) phTrend.textContent = t("label.stable");
+  if (avgFlow) avgFlow.textContent = formatNumber(average(sites, "flow"));
+  if (avgPh) avgPh.textContent = formatNumber(average(sites, "ph"));
+  if (flowTrend) setSideTrend(flowTrend, trendOf(hourlySeries(sites, "flow")));
+  if (phTrend) setSideTrend(phTrend, trendOf(hourlySeries(sites, "ph")));
+}
+
+function setSideTrend(node, trend) {
+  node.textContent = trend.text === "—" ? "—" : trend.dir === "stable" ? t("label.stable") : `${trend.text} ${t("analysis.last24h")}`;
+  node.classList.remove("trend-up", "trend-down", "trend-stable");
+  node.classList.add(`trend-${trend.dir === "down" ? "stable" : trend.dir}`);
 }
 
 function renderRegistry() {
@@ -411,11 +490,16 @@ function renderRegistry() {
   if (!target) return;
 
   if (count) count.textContent = `${t("sites.showing")} ${sites.length} ${t("sites.entries")}`;
+  if (!sites.length) {
+    target.innerHTML = statusRow(6);
+    return;
+  }
+
   target.innerHTML = sites.map((site) => `
     <tr>
       <td>
         <strong>${site.deviceId}</strong>
-        <small>${timeFormatter.format(new Date(site.transmittedAt))}</small>
+        <small>${formatTime(site.receivedAt)}</small>
       </td>
       <td>
         <div style="display:flex;align-items:center;gap:8px">
@@ -426,8 +510,8 @@ function renderRegistry() {
           </div>
         </div>
       </td>
-      <td>${site.catchment}</td>
-      <td>${timeFormatter.format(new Date(site.transmittedAt))}</td>
+      <td>${site.registered ? site.catchment : localText({ name: site.catchment, nameCy: "Heb ei neilltuo" }, "name")}</td>
+      <td>${formatTime(site.transmittedAt)}</td>
       <td>
         <span class="qc-pill ${site.qc.valid ? "valid" : "invalid"}">
           <span class="material-symbols-outlined">${site.qc.valid ? "check_circle" : "cloud_off"}</span>
@@ -508,5 +592,20 @@ document.querySelector("[data-official-map-select]").addEventListener("change", 
   render();
 });
 
+async function loadLiveData() {
+  try {
+    const live = await fetchDashboard(state.source);
+    state.snapshot = createDashboardSnapshot(live);
+    state.dataStatus = "ready";
+  } catch (error) {
+    console.warn("Live data unavailable:", error);
+    // Keep showing the last good data if a refresh fails.
+    if (state.dataStatus !== "ready") state.dataStatus = "error";
+  }
+  render();
+}
+
 startWaterFlow(document.querySelector("#flow-canvas"));
 render();
+loadLiveData();
+setInterval(loadLiveData, REFRESH_INTERVAL_MS);

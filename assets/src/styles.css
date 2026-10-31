@@ -1368,3 +1368,30 @@ body[data-current-view="map"] .map-workbench {
 
   .drawer-metrics { grid-template-columns: 1fr; }
 }
+
+/* Live data states */
+.data-source-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  color: var(--on-surface-variant);
+  background: rgba(224, 227, 229, 0.5);
+}
+.data-source-note[hidden] { display: none; }
+.data-source-note.is-test { color: #92400e; background: #fef3c7; }
+.data-source-note.is-error { color: var(--error); background: var(--error-container); }
+.empty-row td {
+  padding: 28px 16px;
+  text-align: center;
+  color: var(--on-surface-variant);
+}
+.chart-empty {
+  display: grid;
+  place-items: center;
+  min-height: 220px;
+  color: var(--on-surface-variant);
+}
