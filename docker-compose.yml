@@ -26,3 +26,60 @@ services:
     expose:
       - "80"
     restart: unless-stopped
+
+  # Sensor ingestion API, production: https://rivermonitor.aber.ac.uk/cam/api/v1/readings
+  ingest-api:
+    build: ./ingest
+    image: camathern-ingest:latest
+    expose:
+      - "8000"
+    environment:
+      DB_HOST: ingest-db
+      DB_NAME: sensors
+      DB_USER: sensors
+      DB_PASSWORD: ${INGEST_DB_PASSWORD:?Set INGEST_DB_PASSWORD in the stack environment variables}
+      ROOT_PATH: /cam
+      DOCS_ENABLED: "false"
+    depends_on:
+      ingest-db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Sensor ingestion API, development (own database, /docs enabled):
+  # https://rivermonitor.aber.ac.uk/cam/dev/api/v1/readings
+  ingest-api-dev:
+    build: ./ingest
+    image: camathern-ingest:latest
+    expose:
+      - "8000"
+    environment:
+      DB_HOST: ingest-db
+      DB_NAME: sensors_dev          # created automatically on first start
+      DB_USER: sensors
+      DB_PASSWORD: ${INGEST_DB_PASSWORD:?Set INGEST_DB_PASSWORD in the stack environment variables}
+      ROOT_PATH: /cam/dev
+      DOCS_ENABLED: "true"
+    depends_on:
+      ingest-db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # PostgreSQL for the ingestion API. Not published; data lives in the
+  # ingest-pgdata volume. Never delete that volume.
+  ingest-db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: sensors
+      POSTGRES_USER: sensors
+      POSTGRES_PASSWORD: ${INGEST_DB_PASSWORD:?Set INGEST_DB_PASSWORD in the stack environment variables}
+    volumes:
+      - ingest-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sensors -d sensors"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+volumes:
+  ingest-pgdata:

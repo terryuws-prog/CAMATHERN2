@@ -1,0 +1,84 @@
+import math
+from datetime import datetime, timezone
+from typing import Optional
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+BIGINT_MAX = 2**63 - 1
+
+FLOAT_FIELDS = (
+    "voltage_v", "ph", "temp_c", "ec_us_cm", "do_mg_l",
+    "nh4_reported_mg_l", "no3_reported_mg_l", "flow_l_min", "depth_m",
+)
+
+
+class Record(BaseModel):
+    """One row of the SD logging schema, plus boot_count.
+
+    Lenient on purpose: 0/1 and "true"/"false" are accepted for booleans,
+    NaN/inf become NULL, and unknown fields are kept in readings.extra.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    # identity
+    node_id: Optional[str] = None          # optional per record; must match the API key's device
+    fw_version: Optional[str] = None       # optional per record; overrides the batch-level value
+    boot_count: Optional[int] = Field(default=None, ge=0, le=BIGINT_MAX)
+    sample_seq: int = Field(ge=0, le=BIGINT_MAX)
+    timestamp_utc: datetime                # ISO 8601 ("2026-10-27T15:00:00Z") or Unix seconds
+
+    # diagnostics
+    rtc_ok: Optional[bool] = None
+    uptime_s: Optional[int] = Field(default=None, ge=0, le=BIGINT_MAX)
+    voltage_v: Optional[float] = None
+
+    # measurements
+    ph: Optional[float] = None
+    temp_c: Optional[float] = None
+    ec_us_cm: Optional[float] = None
+    do_mg_l: Optional[float] = None
+    nh4_reported_mg_l: Optional[float] = None
+    no3_reported_mg_l: Optional[float] = None
+    flow_l_min: Optional[float] = None
+    depth_m: Optional[float] = None
+
+    # flags
+    do_ok: Optional[bool] = None
+    ph_ok: Optional[bool] = None
+    ec_ok: Optional[bool] = None
+    nh4_ok: Optional[bool] = None
+    no3_ok: Optional[bool] = None
+    temp_ok: Optional[bool] = None
+    temp_source: Optional[str] = None
+    flow_placeholder: Optional[bool] = None
+    test_mode: bool = False
+
+    @field_validator("timestamp_utc")
+    @classmethod
+    def assume_utc(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    @field_validator(*FLOAT_FIELDS)
+    @classmethod
+    def finite_or_null(cls, value: Optional[float]) -> Optional[float]:
+        if value is not None and not math.isfinite(value):
+            return None
+        return value
+
+    @field_validator("test_mode", mode="before")
+    @classmethod
+    def null_test_mode_is_false(cls, value):
+        return False if value is None else value
+
+
+COLUMNS = (
+    "node_id", "boot_count", "sample_seq", "timestamp_utc", "batch_id", "fw_version",
+    "rtc_ok", "uptime_s", "voltage_v",
+    "ph", "temp_c", "ec_us_cm", "do_mg_l", "nh4_reported_mg_l", "no3_reported_mg_l",
+    "flow_l_min", "depth_m",
+    "do_ok", "ph_ok", "ec_ok", "nh4_ok", "no3_ok", "temp_ok",
+    "temp_source", "flow_placeholder", "test_mode", "extra",
+)
