@@ -60,6 +60,9 @@ Cellular field nodes upload readings to `https://rivermonitor.aber.ac.uk/cam/api
 Docker stack, behind the proxy. Setup, API keys and backups: `ingest/README.md`.
 Firmware spec: `ingest/API.md`.
 
+The cellular modem cannot handshake with Cloudflare, so the nodes upload through a
+small HTTPS relay on Google Cloud that forwards to this API: see `relay/README.md`.
+
 ## Data Architecture
 
 Device payloads carry sensor ID only — no coordinates. Locations are joined from the council's SharePoint registry at render time, ensuring operational site data stays in the secure registry.
