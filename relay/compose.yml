@@ -1,0 +1,18 @@
+# HTTPS relay for the cellular nodes. Set up and started by setup.sh.
+name: sensor-relay
+
+services:
+  nginx:
+    image: nginx:1.28.0-alpine
+    container_name: sensor-relay-nginx
+    restart: unless-stopped
+    ports:
+      - "443:443"            # port 80 stays free for certbot (certificate renewal)
+    environment:
+      RELAY_DOMAIN: ${RELAY_DOMAIN:?RELAY_DOMAIN missing from .env}
+      UPSTREAM_SCHEME: ${UPSTREAM_SCHEME:-https}
+      UPSTREAM_HOST: ${UPSTREAM_HOST:-rivermonitor.aber.ac.uk}
+      NGINX_ENVSUBST_FILTER: "^(RELAY_DOMAIN|UPSTREAM_SCHEME|UPSTREAM_HOST)$$"
+    volumes:
+      - ./nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
