@@ -2,6 +2,7 @@ services:
   # nginx reverse proxy: the only public listener on 3000.
   proxy:
     build: ./proxy
+    pull_policy: build   # always rebuild on redeploy
     ports:
       - "3000:3000"
     depends_on:
@@ -23,6 +24,7 @@ services:
   # CAMATHERN2: internal only, reached through proxy at /cam/.
   camathern:
     build: .
+    pull_policy: build   # always rebuild on redeploy
     expose:
       - "80"
     restart: unless-stopped

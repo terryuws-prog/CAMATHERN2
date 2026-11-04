@@ -1,4 +1,4 @@
-import { catchments as catchmentDirectory, siteRegistry, standards } from "./data.js";
+import { catchments as catchmentDirectory, siteRegistry, standards } from "./data.js?v=20261104";
 
 // Live devices that are not in the council registry yet are listed here.
 export const UNASSIGNED_CATCHMENT = {

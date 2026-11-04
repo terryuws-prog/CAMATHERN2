@@ -1,7 +1,7 @@
-import { createDashboardSnapshot } from "./dashboard-model.js";
-import { translate } from "./i18n.js";
-import { REFRESH_INTERVAL_MS, dataSource, fetchDashboard } from "./live-data.js";
-import { startWaterFlow } from "./water-flow.js";
+import { createDashboardSnapshot } from "./dashboard-model.js?v=20261104";
+import { translate } from "./i18n.js?v=20261104";
+import { REFRESH_INTERVAL_MS, dataSource, fetchDashboard } from "./live-data.js?v=20261104";
+import { startWaterFlow } from "./water-flow.js?v=20261104";
 
 const state = {
   language: "en",
