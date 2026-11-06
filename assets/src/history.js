@@ -10,7 +10,6 @@ import {
   standardFor,
   stateToSearch,
   summarize,
-  uploadDelayMinutes,
 } from "./history-model.js?v=20261106";
 
 const REFRESH_MS = 5 * 60 * 1000;
@@ -118,9 +117,7 @@ function renderSummary() {
   target.innerHTML = [
     stat("Readings", fmt(s.count), data.truncated ? "newest 5000 shown" : "in this range"),
     stat("Last upload", fmtAgo(s.lastReceived), fmtTime(s.lastReceived)),
-    stat("Gaps over 35 min", fmt(s.gaps), s.gaps ? `longest ${fmtDuration(s.longestGapMinutes)}` : "readings are continuous", s.gaps > 0),
     stat("Flagged readings", fmt(s.flagged), "a sensor or RTC flag is off", s.flagged > 0),
-    stat("Latest voltage", isNumber(s.latestVoltage) ? `${fmt(s.latestVoltage)} V` : "—"),
   ].join("");
 }
 
@@ -228,9 +225,8 @@ function renderChart() {
   });
 }
 
-function valueCell(reading, key, flag) {
-  const off = flag && reading[flag] === false;
-  return `<td class="num${off ? " off" : ""}"${off ? ' title="Sensor flag off"' : ""}>${fmt(reading[key])}</td>`;
+function valueCell(reading, key) {
+  return `<td class="num">${fmt(reading[key])}</td>`;
 }
 
 function statusRow(columns, message) {
@@ -241,28 +237,26 @@ function renderReadings() {
   const target = $("[data-readings]");
   const more = $("[data-more]");
   more.hidden = true;
-  if (loadError) return void (target.innerHTML = statusRow(12, "Couldn't load data."));
-  if (!data) return void (target.innerHTML = statusRow(12, "Loading…"));
-  if (!data.readings.length) return void (target.innerHTML = statusRow(12, "No readings in this range."));
+  if (loadError) return void (target.innerHTML = statusRow(11, "Couldn't load data."));
+  if (!data) return void (target.innerHTML = statusRow(11, "Loading…"));
+  if (!data.readings.length) return void (target.innerHTML = statusRow(11, "No readings in this range."));
 
   const rows = data.readings.slice(0, state.shown);
   target.innerHTML = rows.map((r) => {
     const flags = failingFlags(r);
-    const delay = uploadDelayMinutes(r);
     const timeNote = r.timestampUtc && r.rtc_ok !== false ? "" : "<small>arrival time</small>";
     return `<tr>
       <td>${fmtTime(r.observedAt)}${timeNote}</td>
       <td class="num">${fmt(r.boot_count)} / ${fmt(r.sample_seq)}</td>
-      ${valueCell(r, "ph", "ph_ok")}
-      ${valueCell(r, "temp_c", "temp_ok")}
-      ${valueCell(r, "ec_us_cm", "ec_ok")}
-      ${valueCell(r, "do_mg_l", "do_ok")}
-      ${valueCell(r, "nh4_reported_mg_l", "nh4_ok")}
-      ${valueCell(r, "no3_reported_mg_l", "no3_ok")}
+      ${valueCell(r, "ph")}
+      ${valueCell(r, "temp_c")}
+      ${valueCell(r, "ec_us_cm")}
+      ${valueCell(r, "do_mg_l")}
+      ${valueCell(r, "nh4_reported_mg_l")}
+      ${valueCell(r, "no3_reported_mg_l")}
       ${valueCell(r, "depth_m")}
       ${valueCell(r, "voltage_v")}
       <td>${flags.length ? `<span class="bad">${flags.join(", ")} off</span>` : '<span class="ok">All OK</span>'}${r.test_mode ? '<span class="tag">test</span>' : ""}</td>
-      <td>${fmtTime(r.receivedAt)}${delay != null && delay >= 1 ? `<small>+${fmtDuration(delay)}</small>` : ""}<small>batch ${fmt(r.batch_id)}</small></td>
     </tr>`;
   }).join("");
   $("[data-readings-note]").textContent = `Newest first. Showing ${fmt(rows.length)} of ${fmt(data.readings.length)}.`;
