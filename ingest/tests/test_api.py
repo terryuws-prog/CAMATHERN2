@@ -229,6 +229,51 @@ def test_dashboard_endpoint(client, key):
     assert client.get("/api/v1/dashboard?hours=0").status_code == 422
 
 
+def test_history_endpoint(client, key):
+    import csv as csvmod
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    def at(minutes_ago):
+        return (now - timedelta(minutes=minutes_ago)).isoformat().replace("+00:00", "Z")
+    hist_key = new_device("node-hist")
+    def rec(seq, **kw):
+        return record(seq, boot=7, node_id="node-hist", **kw)
+    post(client, hist_key, {"records": [rec(1, timestamp_utc=at(60 * 30)), rec(2, timestamp_utc=at(120))]})
+    post(client, hist_key, {"records": [
+        rec(3, timestamp_utc=at(90), do_ok=0, temp_source="=cmd()"),
+        rec(4, timestamp_utc=at(30), test_mode=1),
+        rec(5, timestamp_utc=None, rtc_ok=0),
+    ]})
+
+    body = client.get("/api/v1/history?node_id=node-hist").json()
+    assert body["nodeId"] == "node-hist" and body["name"] == "test"
+    assert [r["sample_seq"] for r in body["readings"]] == [5, 3, 2, 1]   # newest first, test record hidden
+    assert body["readings"][0]["timestampUtc"] is None and body["readings"][0]["observedAt"]
+    flagged = next(r for r in body["readings"] if r["sample_seq"] == 3)
+    assert flagged["do_ok"] is False and flagged["do_mg_l"] == 9.8       # raw value kept, flag shown
+    assert len(body["uploads"]) == 2 and body["uploads"][0]["records"] == 3
+    assert {"deviceId": "node-hist", "name": "test"} in body["nodes"]
+    assert body["truncated"] is False
+
+    last_day = client.get("/api/v1/history?node_id=node-hist&hours=24").json()
+    assert [r["sample_seq"] for r in last_day["readings"]] == [5, 3, 2]
+    with_test = client.get("/api/v1/history?node_id=node-hist&include_test=true").json()
+    assert [r["sample_seq"] for r in with_test["readings"]][:2] == [5, 4]
+
+    resp = client.get("/api/v1/history?node_id=node-hist&format=csv")
+    assert resp.headers["content-type"].startswith("text/csv")
+    assert "attachment" in resp.headers["content-disposition"]
+    rows = list(csvmod.reader(resp.text.splitlines()))
+    assert rows[0][:4] == ["observed_at_utc", "timestamp_utc", "received_at_utc", "boot_count"]
+    assert len(rows) == 5
+    assert "'=cmd()" in resp.text and ",=cmd()" not in resp.text      # no spreadsheet formulas
+
+    assert client.get("/api/v1/history?node_id=nope").status_code == 404
+    assert client.get("/api/v1/history?hours=0").status_code == 422
+    assert client.get("/api/v1/history?format=xml").status_code == 422
+    assert client.get("/api/v1/history").json()["nodeId"]                 # defaults to a node with data
+
+
 def test_raw_batches_kept(client, key):
     n_batches, n_records = query("SELECT count(*), sum(record_count) FROM raw_batches")[0]
     assert n_batches > 5 and n_records > 10

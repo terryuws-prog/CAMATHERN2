@@ -1,3 +1,5 @@
+import csv
+import io
 import json
 import logging
 import math
@@ -11,7 +13,7 @@ from typing import Any, Optional
 import psycopg
 from fastapi import FastAPI, Query, Request, Security
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.security import APIKeyHeader
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
@@ -386,6 +388,134 @@ async def dashboard(hours: int = Query(24, ge=1, le=168, description="History wi
     """Read-only and public (no API key). Only active nodes with at least one
     reading are listed. Flow is in m3/s; values whose sensor flag is false are null."""
     data = await run_in_threadpool(dashboard_data, hours, include_test)
+    return JSONResponse(data, headers={"Cache-Control": "public, max-age=30"})
+
+
+# ---------- public history (read-only, no key) ----------
+#
+# Every stored reading for one node, raw values plus the sensor flags, newest
+# first. Used by /cam/history.html. Capped so nobody can pull the whole table
+# in one go.
+
+HISTORY_FIELDS = (
+    "boot_count", "sample_seq", "rtc_ok", "uptime_s", "voltage_v",
+    "ph", "temp_c", "ec_us_cm", "do_mg_l", "nh4_reported_mg_l", "no3_reported_mg_l",
+    "flow_l_min", "depth_m",
+    "do_ok", "ph_ok", "ec_ok", "nh4_ok", "no3_ok", "temp_ok",
+    "temp_source", "flow_placeholder", "test_mode", "batch_id", "fw_version",
+)
+HISTORY_MAX_ROWS = 5000
+HISTORY_MAX_HOURS = 24 * 366
+
+HISTORY_RANGE = "(%(hours)s::int IS NULL OR {t} >= now() - make_interval(hours => %(hours)s::int))"
+
+HISTORY_NODES_SQL = """
+    SELECT d.node_id, d.name FROM devices d
+    WHERE d.active AND EXISTS (
+        SELECT 1 FROM readings r WHERE r.node_id = d.node_id AND (%(include_test)s OR NOT r.test_mode))
+    ORDER BY d.node_id
+"""
+
+HISTORY_READINGS_SQL = f"""
+    SELECT {OBS_TIME} AS observed_at, r.timestamp_utc, r.received_at,
+           {", ".join("r." + f for f in HISTORY_FIELDS)}
+    FROM readings r JOIN devices d ON d.node_id = r.node_id
+    WHERE r.node_id = %(node_id)s AND {DASHBOARD_FILTER}
+      AND {HISTORY_RANGE.format(t=OBS_TIME)}
+    ORDER BY {OBS_TIME} DESC, r.id DESC
+    LIMIT %(limit)s
+"""
+
+HISTORY_UPLOADS_SQL = f"""
+    SELECT b.id, b.received_at, b.record_count, b.inserted, b.duplicates, b.rejected
+    FROM raw_batches b JOIN devices d ON d.node_id = b.node_id
+    WHERE b.node_id = %(node_id)s AND d.active AND {HISTORY_RANGE.format(t="b.received_at")}
+    ORDER BY b.id DESC
+    LIMIT 500
+"""
+
+CSV_COLUMNS = ("observed_at_utc", "timestamp_utc", "received_at_utc") + HISTORY_FIELDS
+
+
+class UnknownNode(Exception):
+    pass
+
+
+def history_data(node_id: Optional[str], hours: Optional[int], include_test: bool) -> dict:
+    params = {"hours": hours, "include_test": include_test, "limit": HISTORY_MAX_ROWS}
+    with db.pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        nodes = [{"deviceId": r["node_id"], "name": r["name"]}
+                 for r in cur.execute(HISTORY_NODES_SQL, params).fetchall()]
+        if node_id is None:
+            if not nodes:
+                return {"generatedAt": now_iso(), "nodeId": None, "name": None, "hours": hours,
+                        "includeTest": include_test, "truncated": False, "nodes": [],
+                        "readings": [], "uploads": []}
+            node_id = nodes[0]["deviceId"]
+        match = next((n for n in nodes if n["deviceId"] == node_id), None)
+        if match is None:
+            raise UnknownNode(node_id)
+        params["node_id"] = node_id
+        rows = cur.execute(HISTORY_READINGS_SQL, params).fetchall()
+        uploads = cur.execute(HISTORY_UPLOADS_SQL, params).fetchall()
+
+    readings = []
+    for row in rows:
+        item = {"observedAt": iso(row.pop("observed_at")),
+                "timestampUtc": iso(row.pop("timestamp_utc")),
+                "receivedAt": iso(row.pop("received_at"))}
+        item.update(row)
+        readings.append(item)
+    return {
+        "generatedAt": now_iso(),
+        "nodeId": node_id,
+        "name": match["name"],
+        "hours": hours,
+        "includeTest": include_test,
+        "truncated": len(readings) >= HISTORY_MAX_ROWS,
+        "nodes": nodes,
+        "readings": readings,
+        "uploads": [{"batchId": u["id"], "receivedAt": iso(u["received_at"]), "records": u["record_count"],
+                     "inserted": u["inserted"], "duplicates": u["duplicates"], "rejected": u["rejected"]}
+                    for u in uploads],
+    }
+
+
+def csv_cell(value: Any) -> Any:
+    """Stop spreadsheet apps treating device text as a formula."""
+    if isinstance(value, str) and value[:1] in ("=", "+", "-", "@"):
+        return "'" + value
+    return "" if value is None else value
+
+
+def history_csv(data: dict) -> str:
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(CSV_COLUMNS)
+    for r in data["readings"]:
+        writer.writerow([csv_cell(v) for v in
+                         (r["observedAt"], r["timestampUtc"], r["receivedAt"], *(r[f] for f in HISTORY_FIELDS))])
+    return out.getvalue()
+
+
+@app.get("/api/v1/history", summary="Every stored reading for one node (raw values and flags), newest first")
+async def history(node_id: Optional[str] = Query(None, description="Defaults to the first node with data"),
+                  hours: Optional[int] = Query(None, ge=1, le=HISTORY_MAX_HOURS,
+                                               description="Only the last N hours; omit for everything"),
+                  include_test: bool = Query(False, description="Include records sent with test_mode=true"),
+                  format: str = Query("json", pattern="^(json|csv)$")):
+    """Read-only and public (no API key). Raw values are returned with their
+    sensor flags; nothing is hidden or corrected. At most 5000 readings."""
+    try:
+        data = await run_in_threadpool(history_data, node_id, hours, include_test)
+    except UnknownNode:
+        return error(404, "unknown_node", f"No active node '{node_id}' with readings.")
+    if format == "csv":
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
+        filename = f"{data['nodeId'] or 'no-data'}-history-{stamp}.csv"
+        return Response(history_csv(data), media_type="text/csv; charset=utf-8",
+                        headers={"Content-Disposition": f'attachment; filename="{filename}"',
+                                 "Cache-Control": "no-store"})
     return JSONResponse(data, headers={"Cache-Control": "public, max-age=30"})
 
 

@@ -8,6 +8,7 @@ behind the existing nginx proxy:
 |---|---|---|
 | `https://rivermonitor.aber.ac.uk/cam/api/v1/readings` | `ingest-api` (production) | `sensors` |
 | `https://rivermonitor.aber.ac.uk/cam/dev/api/v1/readings` | `ingest-api-dev` (testing, `/cam/dev/docs` enabled) | `sensors_dev` |
+| `.../cam/api/v1/history` and `.../cam/dev/api/v1/history` (read-only, public, used by `/cam/history.html`; `format=csv` for a download) | `ingest-api`, `ingest-api-dev` | |
 | – (internal only) | `ingest-db` (Postgres 16, volume `ingest-pgdata`) | |
 
 `API.md` is the interface spec for the firmware.

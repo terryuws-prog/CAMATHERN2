@@ -1395,3 +1395,8 @@ body[data-current-view="map"] .map-workbench {
   min-height: 220px;
   color: var(--on-surface-variant);
 }
+
+/* Details buttons are links to the node history page */
+a.row-action, a.drawer-detail { align-items: center; justify-content: center; text-decoration: none; }
+a.row-action { display: inline-flex; }
+a.drawer-detail { display: flex; width: fit-content; }
