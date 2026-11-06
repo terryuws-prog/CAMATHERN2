@@ -60,6 +60,10 @@ Cellular field nodes upload readings to `https://rivermonitor.aber.ac.uk/cam/api
 Docker stack, behind the proxy. Setup, API keys and backups: `ingest/README.md`.
 Firmware spec: `ingest/API.md`.
 
+Every reading from one node, with sensor flags, a time chart, upload batches and a
+CSV download: `/cam/history.html` (add `?source=dev` for test data). The Details
+buttons on the Sites view link to it. Public and read-only, capped at 5000 readings.
+
 The cellular modem cannot handshake with Cloudflare, so the nodes upload through a
 small HTTPS relay on Google Cloud that forwards to this API: see `relay/README.md`.
 

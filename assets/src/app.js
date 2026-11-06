@@ -1,7 +1,7 @@
-import { createDashboardSnapshot } from "./dashboard-model.js?v=20261104";
-import { translate } from "./i18n.js?v=20261104";
-import { REFRESH_INTERVAL_MS, dataSource, fetchDashboard } from "./live-data.js?v=20261104";
-import { startWaterFlow } from "./water-flow.js?v=20261104";
+import { createDashboardSnapshot } from "./dashboard-model.js?v=20261106";
+import { translate } from "./i18n.js?v=20261106";
+import { REFRESH_INTERVAL_MS, dataSource, fetchDashboard } from "./live-data.js?v=20261106";
+import { startWaterFlow } from "./water-flow.js?v=20261106";
 
 const state = {
   language: "en",
@@ -166,6 +166,11 @@ function siteName(site) {
 
 function localText(item, key) {
   return (state.language === "cy" ? item[`${key}Cy`] || item[key] : item[key]) || "";
+}
+
+function historyLink(site) {
+  const source = state.source === "dev" ? "&source=dev" : "";
+  return `./history.html?node=${encodeURIComponent(site.deviceId)}${source}`;
 }
 
 function selectedSites() {
@@ -382,7 +387,7 @@ function renderStationDrawer() {
           <path d="M0,40 L0,30 C20,30 30,20 50,25 C70,30 80,10 100,5 L100,40 Z" fill="rgba(13,148,136,0.1)" stroke="var(--secondary)" stroke-width="2" vector-effect="non-scaling-stroke"/>
         </svg>
       </div>
-      <button class="drawer-detail" type="button">${t("label.details")}</button>
+      <a class="drawer-detail" href="${historyLink(site)}">${t("label.details")}</a>
     </div>
   `;
 }
@@ -518,7 +523,7 @@ function renderRegistry() {
           ${site.qc.valid ? t("label.valid") : t("label.invalid")}
         </span>
       </td>
-      <td><button class="row-action" type="button">${t("label.details")}</button></td>
+      <td><a class="row-action" href="${historyLink(site)}">${t("label.details")}</a></td>
     </tr>
   `).join("");
 }

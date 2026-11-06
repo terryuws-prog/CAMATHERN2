@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Every reading received from a monitoring node, with sensor status flags." />
+    <title>Node history — Catchment Data Explorer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./src/history.css?v=20261106" />
+  </head>
+  <body>
+    <main>
+      <a class="back" href="./" data-back>← Back to the dashboard</a>
+      <h1>Node history</h1>
+      <p class="lede">Every reading received from a monitoring node, exactly as the device sent it, with its sensor status flags.</p>
+      <div class="badges">
+        <span class="badge raw">Raw sensor data, not quality-checked</span>
+        <span class="badge test" data-test-badge hidden>Test data (development database)</span>
+        <span class="badge" data-status>Loading…</span>
+      </div>
+
+      <section class="controls" aria-label="History filters">
+        <label>Node
+          <select data-node aria-label="Node"></select>
+        </label>
+        <label>Time range
+          <select data-range aria-label="Time range">
+            <option value="24">Last 24 hours</option>
+            <option value="168">Last 7 days</option>
+            <option value="720">Last 30 days</option>
+            <option value="all">All</option>
+          </select>
+        </label>
+        <a class="button" data-csv href="#" download>Download CSV</a>
+        <span class="updated" data-updated></span>
+      </section>
+
+      <section class="cards" data-summary aria-label="Summary"></section>
+
+      <section class="panel" aria-labelledby="chart-title">
+        <div class="panel-head">
+          <h2 id="chart-title">Over time</h2>
+          <p>UK local time. Lines break where readings are more than 35 minutes apart. Readings without a valid device clock are listed below but not plotted.</p>
+        </div>
+        <div class="params" data-params role="group" aria-label="Parameter"></div>
+        <div class="chart" data-chart></div>
+        <div class="legend">
+          <span><i class="l-ok"></i>Reading</span>
+          <span><i class="l-flag"></i>Sensor flag off</span>
+          <span><i class="l-band"></i>Standard range</span>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="readings-title">
+        <div class="panel-head">
+          <h2 id="readings-title">Readings</h2>
+          <p data-readings-note></p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th class="num">Boot / seq</th>
+                <th class="num">pH</th>
+                <th class="num">Temp °C</th>
+                <th class="num">EC µS/cm</th>
+                <th class="num">DO mg/L</th>
+                <th class="num">NH4 mg/L</th>
+                <th class="num">NO3 mg/L</th>
+                <th class="num">Depth m</th>
+                <th class="num">Voltage</th>
+                <th>Flags</th>
+                <th>Received</th>
+              </tr>
+            </thead>
+            <tbody data-readings></tbody>
+          </table>
+        </div>
+        <button class="button more" type="button" data-more hidden>Show 100 more</button>
+      </section>
+
+      <section class="panel" aria-labelledby="uploads-title">
+        <div class="panel-head">
+          <h2 id="uploads-title">Uploads</h2>
+          <p>Each row is one upload from the node. Duplicates are records the server already had.</p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Received</th>
+                <th class="num">Batch</th>
+                <th class="num">Records</th>
+                <th class="num">Stored</th>
+                <th class="num">Duplicates</th>
+                <th class="num">Rejected</th>
+              </tr>
+            </thead>
+            <tbody data-uploads></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="./src/history.js?v=20261106"></script>
+  </body>
+</html>
