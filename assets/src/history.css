@@ -82,7 +82,6 @@ table { width: 100%; border-collapse: collapse; font-size: 13px; white-space: no
 th { text-align: left; font-size: 12px; font-weight: 600; color: var(--faint); padding: 8px 10px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--surface); }
 td { padding: 8px 10px; border-bottom: 1px solid var(--surface-low); }
 th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
-td.off { color: var(--error); text-decoration: line-through; }
 td small { color: var(--faint); margin-left: 4px; }
 .ok { color: var(--teal-deep); }
 .bad { color: var(--error); font-weight: 500; }
