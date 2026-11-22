@@ -1,6 +1,7 @@
 import math
 from datetime import datetime, timezone
 from typing import Optional
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -19,8 +20,10 @@ class Record(BaseModel):
     blank strings and NaN/inf become NULL, and unknown fields are kept in
     readings.extra.
 
-    Identity is node_id + boot_count + sample_seq, so timestamp_utc may be
-    null (e.g. RTC invalid) as long as boot_count is sent.
+    Identity is node_id + record_uuid when the node sends one, otherwise
+    node_id + boot_count + sample_seq, otherwise node_id + timestamp_utc.
+    So timestamp_utc may be null (e.g. RTC invalid) as long as record_uuid or
+    boot_count is sent.
     """
 
     model_config = ConfigDict(extra="allow")
@@ -28,6 +31,7 @@ class Record(BaseModel):
     # identity
     node_id: Optional[str] = None          # optional per record; must match the API key's device
     fw_version: Optional[str] = None       # optional per record; overrides the batch-level value
+    record_uuid: Optional[UUID] = None     # preferred identity: set once when the reading is logged
     boot_count: Optional[int] = Field(default=None, ge=0, le=BIGINT_MAX)
     sample_seq: int = Field(ge=0, le=BIGINT_MAX)
     timestamp_utc: Optional[datetime] = None  # ISO 8601 ("2026-10-27T15:00:00Z") or Unix seconds
@@ -68,8 +72,8 @@ class Record(BaseModel):
 
     @model_validator(mode="after")
     def needs_identity(self):
-        if self.timestamp_utc is None and self.boot_count is None:
-            raise ValueError("timestamp_utc is required when boot_count is not sent")
+        if self.timestamp_utc is None and self.boot_count is None and self.record_uuid is None:
+            raise ValueError("timestamp_utc is required when neither record_uuid nor boot_count is sent")
         return self
 
     @field_validator("timestamp_utc")
@@ -100,5 +104,5 @@ COLUMNS = (
     "ph", "temp_c", "ec_us_cm", "do_mg_l", "nh4_reported_mg_l", "no3_reported_mg_l",
     "flow_l_min", "depth_m",
     "do_ok", "ph_ok", "ec_ok", "nh4_ok", "no3_ok", "temp_ok",
-    "temp_source", "flow_placeholder", "test_mode", "extra",
+    "temp_source", "flow_placeholder", "test_mode", "extra", "record_uuid",
 )

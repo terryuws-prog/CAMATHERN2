@@ -62,18 +62,32 @@ CREATE TABLE IF NOT EXISTS readings (
     test_mode          boolean NOT NULL DEFAULT false,
 
     -- any fields the firmware sends that are not columns yet
-    extra              jsonb
+    extra              jsonb,
+
+    -- unique ID the node gives each reading when it is logged
+    record_uuid        uuid
 );
 
 -- Databases created before timestamp_utc became nullable.
 ALTER TABLE readings ALTER COLUMN timestamp_utc DROP NOT NULL;
 
--- De-duplication. Preferred key: node_id + boot_count + sample_seq.
--- Fallback while boot_count is not sent: node_id + timestamp_utc.
-CREATE UNIQUE INDEX IF NOT EXISTS readings_uniq_boot_seq
-    ON readings (node_id, boot_count, sample_seq) WHERE boot_count IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS readings_uniq_timestamp
-    ON readings (node_id, timestamp_utc) WHERE boot_count IS NULL;
+-- Databases created before record_uuid existed.
+ALTER TABLE readings ADD COLUMN IF NOT EXISTS record_uuid uuid;
+
+-- De-duplication, first match wins:
+--   1. node_id + record_uuid            (record_uuid sent)
+--   2. node_id + boot_count + sample_seq (no record_uuid, boot_count sent)
+--   3. node_id + timestamp_utc           (neither sent)
+-- Keys 2 and 3 only apply to records without a UUID, so a reset boot counter
+-- (e.g. after an SD card swap) can't make new readings look like old ones.
+DROP INDEX IF EXISTS readings_uniq_boot_seq;
+DROP INDEX IF EXISTS readings_uniq_timestamp;
+CREATE UNIQUE INDEX IF NOT EXISTS readings_uniq_uuid
+    ON readings (node_id, record_uuid) WHERE record_uuid IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS readings_uniq_boot_seq_v2
+    ON readings (node_id, boot_count, sample_seq) WHERE record_uuid IS NULL AND boot_count IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS readings_uniq_timestamp_v2
+    ON readings (node_id, timestamp_utc) WHERE record_uuid IS NULL AND boot_count IS NULL;
 
 CREATE INDEX IF NOT EXISTS readings_node_time ON readings (node_id, timestamp_utc DESC);
 

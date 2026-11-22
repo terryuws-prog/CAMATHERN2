@@ -51,7 +51,7 @@ Other commands: `list`, `rotate-key node-01`, `disable node-01`, `enable node-01
 | Table | Contents |
 |---|---|
 | `devices` | registered nodes, key hash, last seen |
-| `readings` | one row per record; de-duplicated on `node_id + boot_count + sample_seq` (fallback `node_id + timestamp_utc`) |
+| `readings` | one row per record; de-duplicated on `node_id + record_uuid`, else `node_id + boot_count + sample_seq`, else `node_id + timestamp_utc` |
 | `raw_batches` | every request body exactly as received |
 | `rejected_records` | records that failed validation, with the reason |
 
@@ -63,6 +63,22 @@ Backup (from the `ingest-db` container console):
 ```sh
 pg_dump -U sensors sensors > /var/lib/postgresql/data/backup-$(date +%F).sql
 ```
+
+## Re-importing readings dropped as duplicates
+
+If a node's boot counter reset before it sent `record_uuid` (for example after an
+SD card swap), new readings may have been dropped as duplicates of old ones. Every
+upload is archived in `raw_batches`, so they can be recovered. In the `ingest-api`
+(or `ingest-api-dev`) container console:
+
+```sh
+python -m app.reimport                  # dry run: lists what would be imported
+python -m app.reimport --apply          # import them
+```
+
+Options: `--node node-01`, `--since 2026-11-15`. Only readings whose time or values
+differ from the stored one are imported; genuine retries are skipped, and running
+it again imports nothing new.
 
 ## Configuration
 

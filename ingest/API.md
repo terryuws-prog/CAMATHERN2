@@ -28,6 +28,7 @@ Content-Type: application/json
   "fw_version": "1.0.3",
   "records": [
     {
+      "record_uuid": "6f1c2b8e-4d2a-4c7e-9b1a-0a1b2c3d4e5f",
       "boot_count": 17,
       "sample_seq": 42,
       "timestamp_utc": "2026-10-27T15:00:00Z",
@@ -60,13 +61,14 @@ Top level:
 | `node_id` | no | If sent, must match the node the API key belongs to (else `403`). |
 | `fw_version` | no | Stored on every record in the batch. |
 
-Each record follows the current SD logging schema, plus `boot_count`:
+Each record follows the current SD logging schema, plus `record_uuid` and `boot_count`:
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
+| `record_uuid` | string (UUID) | recommended | Unique ID for this reading, e.g. `6f1c2b8e-4d2a-4c7e-9b1a-0a1b2c3d4e5f`. Generate it **once, when the reading is logged**, store it with the record on the SD card and send the same value on every retry. See *Record identity*. |
 | `boot_count` | integer ≥ 0 | yes (agreed) | Persistent counter incremented on every boot, stored on the SD card. See *Record identity*. |
 | `sample_seq` | integer ≥ 0 | yes | Resets on reboot — that is fine with `boot_count`. |
-| `timestamp_utc` | string, integer or `null` | yes, unless `boot_count` is sent | ISO 8601 UTC, e.g. `2026-10-27T15:00:00Z` (`2026-10-27 15:00:00` and Unix seconds also accepted; no timezone = UTC). May be `null` when the RTC is invalid; the record is still stored. |
+| `timestamp_utc` | string, integer or `null` | yes, unless `record_uuid` or `boot_count` is sent | ISO 8601 UTC, e.g. `2026-10-27T15:00:00Z` (`2026-10-27 15:00:00` and Unix seconds also accepted; no timezone = UTC). May be `null` when the RTC is invalid; the record is still stored. |
 | `rtc_ok` | bool | no | |
 | `uptime_s` | integer | no | |
 | `ph`, `temp_c`, `ec_us_cm`, `do_mg_l`, `nh4_reported_mg_l`, `no3_reported_mg_l`, `flow_l_min`, `depth_m`, `voltage_v` | number or `null` | no | **Use `null` for "no valid reading"**, not a sentinel such as -999. `NaN` and blank strings (`""`) are also treated as `null`. |
@@ -79,9 +81,19 @@ Unknown extra fields are accepted and kept, so adding a field in firmware never 
 
 ## Record identity and retries
 
-The server de-duplicates on **`node_id + boot_count + sample_seq`**. If a record
-without `boot_count` arrives, it falls back to `node_id + timestamp_utc`, which is
-unreliable when `rtc_ok` is false — so please send `boot_count`.
+The server de-duplicates on the first of these the record has:
+
+1. **`node_id + record_uuid`** (preferred)
+2. `node_id + boot_count + sample_seq`
+3. `node_id + timestamp_utc` (unreliable when `rtc_ok` is false)
+
+`record_uuid` makes identity independent of the SD card and the boot counter: a
+counter that restarts (for example after an SD card swap) can no longer make new
+readings look like old ones. The UUID must be created once per reading and reused
+on retries, otherwise a retry would be stored as a new reading. Any random
+(version 4) UUID is fine; upper or lower case are both accepted.
+
+Records without `record_uuid` keep working exactly as before.
 
 Re-sending records is always safe: duplicates are counted, not stored twice.
 

@@ -402,7 +402,7 @@ HISTORY_FIELDS = (
     "ph", "temp_c", "ec_us_cm", "do_mg_l", "nh4_reported_mg_l", "no3_reported_mg_l",
     "flow_l_min", "depth_m",
     "do_ok", "ph_ok", "ec_ok", "nh4_ok", "no3_ok", "temp_ok",
-    "temp_source", "flow_placeholder", "test_mode", "batch_id", "fw_version",
+    "temp_source", "flow_placeholder", "test_mode", "batch_id", "fw_version", "record_uuid",
 )
 HISTORY_MAX_ROWS = 5000
 HISTORY_MAX_HOURS = 24 * 366
@@ -465,6 +465,8 @@ def history_data(node_id: Optional[str], hours: Optional[int], include_test: boo
                 "timestampUtc": iso(row.pop("timestamp_utc")),
                 "receivedAt": iso(row.pop("received_at"))}
         item.update(row)
+        if item["record_uuid"] is not None:
+            item["record_uuid"] = str(item["record_uuid"])
         readings.append(item)
     return {
         "generatedAt": now_iso(),

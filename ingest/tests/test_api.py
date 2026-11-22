@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from app import db, manage  # noqa: E402
+from app import db, manage, reimport  # noqa: E402
 from app.main import app  # noqa: E402
 
 URL = "/api/v1/readings"
@@ -272,6 +272,87 @@ def test_history_endpoint(client, key):
     assert client.get("/api/v1/history?hours=0").status_code == 422
     assert client.get("/api/v1/history?format=xml").status_code == 422
     assert client.get("/api/v1/history").json()["nodeId"]                 # defaults to a node with data
+
+
+def test_record_uuid_dedupe(client, key):
+    uuid_key = new_device("node-uuid")
+    def rec(seq, uid, boot=1, **kw):
+        r = record(seq, boot=boot, node_id="node-uuid", **kw)
+        if uid is not None:
+            r["record_uuid"] = uid
+        return r
+    a = "6f1c2b8e-4d2a-4c7e-9b1a-0a1b2c3d4e5f"
+    b = "0d9b1f3c-8e7a-4f60-a2c1-5e6f7a8b9c0d"
+
+    first = post(client, uuid_key, {"records": [rec(1, a)]}).json()
+    assert first["inserted"] == 1
+    # same UUID again (a retry): duplicate, even with a different boot counter
+    assert post(client, uuid_key, {"records": [rec(1, a.upper(), boot=9)]}).json()["duplicates"] == 1
+    # boot counter reset (SD swap): same boot/seq, new UUID -> stored
+    assert post(client, uuid_key, {"records": [rec(1, b, timestamp_utc="2026-11-22T10:00:00Z")]}).json()["inserted"] == 1
+    # records without a UUID still de-duplicate on boot_count/sample_seq
+    body = post(client, uuid_key, {"records": [rec(2, None), rec(2, None)]}).json()
+    assert (body["inserted"], body["duplicates"]) == (1, 1)
+    assert query("SELECT count(*) FROM readings WHERE node_id = 'node-uuid' AND sample_seq = 2") == [(1,)]
+    # a UUID alone is enough identity, even without a clock or boot counter
+    no_clock = rec(3, "a3b4c5d6-e7f8-4a9b-8c7d-6e5f4a3b2c1d", timestamp_utc=None, rtc_ok=0)
+    del no_clock["boot_count"]
+    assert post(client, uuid_key, {"records": [no_clock]}).json()["inserted"] == 1
+    # malformed UUIDs are rejected with a reason, the rest of the batch is kept
+    body = post(client, uuid_key, {"records": [rec(4, "not-a-uuid"), rec(5, "")]}).json()
+    assert (body["inserted"], body["rejected"]) == (1, 1)   # "" is treated as no UUID
+    assert query("SELECT count(*) FROM readings WHERE node_id = 'node-uuid' AND record_uuid = %s", (a,)) == [(1,)]
+
+    hist = client.get("/api/v1/history?node_id=node-uuid").json()
+    assert a in [r["record_uuid"] for r in hist["readings"]]
+    assert "record_uuid" in client.get("/api/v1/history?node_id=node-uuid&format=csv").text.splitlines()[0]
+
+
+def test_schema_migrates_old_indexes(client, key):
+    # an existing database still has the old unique indexes: re-running the
+    # schema swaps them for the UUID-aware ones and keeps the data
+    with psycopg.connect(db.conninfo(), autocommit=True) as conn:
+        conn.execute("DROP INDEX IF EXISTS readings_uniq_boot_seq_v2")
+        # (old name; excludes the UUID test node, whose rows only the new rules allow)
+        conn.execute("CREATE UNIQUE INDEX readings_uniq_boot_seq ON readings (node_id, boot_count, sample_seq) "
+                     "WHERE boot_count IS NOT NULL AND node_id <> 'node-uuid'")
+    before = query("SELECT count(*) FROM readings")[0][0]
+    db.init_schema()
+    db.init_schema()
+    names = {r[0] for r in query("SELECT indexname FROM pg_indexes WHERE tablename = 'readings'")}
+    assert {"readings_uniq_uuid", "readings_uniq_boot_seq_v2", "readings_uniq_timestamp_v2"} <= names
+    assert "readings_uniq_boot_seq" not in names
+    assert query("SELECT count(*) FROM readings")[0][0] == before
+
+
+def test_reimport_after_boot_counter_reset(client, key):
+    sd_key = new_device("node-sd")
+    def rec(seq, ts, ph):
+        return record(seq, boot=1, node_id="node-sd", timestamp_utc=ts, ph=ph)
+    old_a = rec(1, "2026-11-10T10:00:00Z", 7.0)
+    old_b = rec(2, "2026-11-10T10:30:00Z", 7.1)
+    new_a = rec(1, "2026-11-20T09:00:00Z", 7.6)     # after the SD swap: same boot/seq, new reading
+    new_b = rec(2, "2026-11-20T09:30:00Z", 7.7)
+    post(client, sd_key, {"records": [old_a, old_b]})
+    assert post(client, sd_key, {"records": [new_a, new_b]}).json()["duplicates"] == 2   # wrongly dropped
+    post(client, sd_key, {"records": [old_a]})                                            # a genuine retry
+    post(client, sd_key, {"records": [new_a]})                                            # the node retries a dropped one
+
+    lines = []
+    dry = reimport.run("node-sd", None, apply=False, out=lines.append)
+    assert dry["to_import"] == 2 and dry["identical"] == 2
+    assert query("SELECT count(*) FROM readings WHERE node_id = 'node-sd'") == [(2,)]   # dry run wrote nothing
+    assert any("would import" in line and "ph=7.6" in line for line in lines)
+
+    done = reimport.run("node-sd", None, apply=True, out=lambda *_: None)
+    assert done["imported"] == 2
+    rows = query("SELECT ph, record_uuid IS NOT NULL, extra->>'reimported_from_batch' IS NOT NULL "
+                 "FROM readings WHERE node_id = 'node-sd' ORDER BY timestamp_utc")
+    assert rows == [(7.0, False, False), (7.1, False, False), (7.6, True, True), (7.7, True, True)]
+
+    again = reimport.run("node-sd", None, apply=True, out=lambda *_: None)
+    assert again["imported"] == 0                                                        # idempotent
+    assert query("SELECT count(*) FROM readings WHERE node_id = 'node-sd'") == [(4,)]
 
 
 def test_raw_batches_kept(client, key):
